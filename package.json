@@ -1,0 +1,44 @@
+{
+  "name": "claude-code-katex",
+  "displayName": "Claude Code KaTeX",
+  "description": "Adds LaTeX math rendering to Claude Code chat using KaTeX",
+  "version": "1.1.0",
+  "publisher": "nuriyev",
+  "license": "MIT",
+  "icon": "icon.png",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/MahammadNuriyev62/claude-code-katex"
+  },
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": ["Other"],
+  "keywords": ["claude", "katex", "latex", "math", "rendering", "anthropic", "claude-code"],
+  "galleryBanner": {
+    "color": "#1e1e2e",
+    "theme": "dark"
+  },
+  "activationEvents": ["onStartupFinished"],
+  "main": "./extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "claude-code-katex.enable",
+        "title": "Claude Code KaTeX: Enable LaTeX Rendering"
+      },
+      {
+        "command": "claude-code-katex.disable",
+        "title": "Claude Code KaTeX: Disable LaTeX Rendering"
+      },
+      {
+        "command": "claude-code-katex.status",
+        "title": "Claude Code KaTeX: Check Status"
+      }
+    ]
+  },
+  "scripts": {
+    "vscode:uninstall": "node ./uninstall-hook.js"
+  },
+  "extensionDependencies": ["anthropic.claude-code"]
+}
