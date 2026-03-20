@@ -182,25 +182,28 @@ function promptReload(message) {
 function activate(context) {
   const vendorDir = path.join(context.extensionPath, 'vendor');
 
-  // Auto-patch on startup
+  // Auto-patch on startup.
+  // Files stay patched on disk between sessions so the webview always loads
+  // the patched version (Claude Code's webview loads before this extension).
   const extDir = findClaudeCodeExtDir();
-  if (extDir && !isPatched(extDir)) {
-    try {
-      // Check if this is the very first install (no backups yet).
-      // On first install, the webview already loaded without the patch,
-      // so we need a reload. On subsequent activations (after reload/restart),
-      // deactivate() already unpatched and we're patching before the webview
-      // loads, so no reload prompt is needed.
-      const isFirstInstall = !fs.existsSync(
-        path.join(extDir, 'webview', 'index.js.katex-bak')
-      );
-      applyPatch(extDir, vendorDir);
-      if (isFirstInstall) {
-        promptReload('Claude Code KaTeX: LaTeX rendering patch applied. Reload to activate.');
+  if (extDir) {
+    if (!isPatched(extDir)) {
+      try {
+        const isFirstInstall = !fs.existsSync(
+          path.join(extDir, 'webview', 'index.js.katex-bak')
+        );
+        applyPatch(extDir, vendorDir);
+        // Only prompt reload on first install. On subsequent startups the
+        // files are already patched on disk, so the webview loads them directly.
+        if (isFirstInstall) {
+          promptReload('Claude Code KaTeX: LaTeX rendering patch applied. Reload to activate.');
+        }
+      } catch (e) {
+        console.error('[Claude Code KaTeX] Auto-patch failed:', e);
       }
-    } catch (e) {
-      console.error('[Claude Code KaTeX] Auto-patch failed:', e);
     }
+  } else {
+    console.warn('[Claude Code KaTeX] Claude Code extension not found.');
   }
 
   // Enable command
@@ -278,16 +281,9 @@ function activate(context) {
 }
 
 function deactivate() {
-  // Unpatch when the extension is disabled or VSCode closes.
-  // On reload/restart, activate() will re-patch before the webview loads.
-  try {
-    const extDir = findClaudeCodeExtDir();
-    if (extDir && isPatched(extDir)) {
-      removePatch(extDir);
-    }
-  } catch (e) {
-    console.error('[Claude Code KaTeX] Deactivate cleanup failed:', e);
-  }
+  // Intentionally empty. Files stay patched on disk so Claude Code's webview
+  // (which loads before our extension activates) always gets the patched version.
+  // Cleanup happens via: "Disable" command, or uninstall-hook.js on uninstall.
 }
 
 module.exports = { activate, deactivate };
