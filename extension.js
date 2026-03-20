@@ -189,15 +189,10 @@ function activate(context) {
   if (extDir) {
     if (!isPatched(extDir)) {
       try {
-        const isFirstInstall = !fs.existsSync(
-          path.join(extDir, 'webview', 'index.js.katex-bak')
-        );
         applyPatch(extDir, vendorDir);
-        // Only prompt reload on first install. On subsequent startups the
-        // files are already patched on disk, so the webview loads them directly.
-        if (isFirstInstall) {
-          promptReload('Claude Code KaTeX: LaTeX rendering patch applied. Reload to activate.');
-        }
+        // Always prompt reload when we patch on startup, because the webview
+        // already loaded the unpatched files before this extension activated.
+        promptReload('Claude Code KaTeX: LaTeX rendering patch applied. Reload to activate.');
       } catch (e) {
         console.error('[Claude Code KaTeX] Auto-patch failed:', e);
       }
