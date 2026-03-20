@@ -282,3 +282,15 @@ function deactivate() {
 }
 
 module.exports = { activate, deactivate };
+
+// Exposed for testing only
+module.exports._test = {
+  findClaudeCodeExtDir,
+  isPatched,
+  applyPatch,
+  removePatch,
+  getMutationObserverScript,
+  promptReload,
+  PATCH_MARKER,
+  PATCH_CSS_MARKER,
+};

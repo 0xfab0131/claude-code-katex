@@ -2,24 +2,36 @@
   "name": "claude-code-katex",
   "displayName": "Claude Code KaTeX",
   "description": "Adds LaTeX math rendering to Claude Code chat using KaTeX",
-  "version": "1.4.2",
+  "version": "1.5.0",
   "publisher": "nuriyev",
   "license": "MIT",
   "icon": "icon.png",
   "repository": {
     "type": "git",
-    "url": "https://github.com/MahammadNuriyev62/claude-code-katex"
+    "url": "git+https://github.com/MahammadNuriyev62/claude-code-katex.git"
   },
   "engines": {
     "vscode": "^1.85.0"
   },
-  "categories": ["Other"],
-  "keywords": ["claude", "katex", "latex", "math", "rendering", "anthropic", "claude-code"],
+  "categories": [
+    "Other"
+  ],
+  "keywords": [
+    "claude",
+    "katex",
+    "latex",
+    "math",
+    "rendering",
+    "anthropic",
+    "claude-code"
+  ],
   "galleryBanner": {
     "color": "#1e1e2e",
     "theme": "dark"
   },
-  "activationEvents": ["onStartupFinished"],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
   "main": "./extension.js",
   "contributes": {
     "commands": [
@@ -38,7 +50,18 @@
     ]
   },
   "scripts": {
+    "test": "jest",
     "vscode:uninstall": "node ./uninstall-hook.js"
   },
-  "extensionDependencies": ["anthropic.claude-code"]
+  "extensionDependencies": [
+    "anthropic.claude-code"
+  ],
+  "author": "",
+  "bugs": {
+    "url": "https://github.com/MahammadNuriyev62/claude-code-katex/issues"
+  },
+  "homepage": "https://github.com/MahammadNuriyev62/claude-code-katex#readme",
+  "devDependencies": {
+    "jest": "^30.3.0"
+  }
 }

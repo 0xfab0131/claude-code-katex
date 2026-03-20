@@ -3,3 +3,6 @@ node_modules/**
 install.sh
 uninstall.sh
 .gitignore
+*.test.js
+package-lock.json
+claude-code-katex-*.vsix
