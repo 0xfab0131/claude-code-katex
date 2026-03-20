@@ -38,10 +38,23 @@ When Claude Code updates, the patch is automatically re-applied.
 
 `extension.js` of Claude Code is **never modified**. Only the webview bundle (which runs in an isolated browser context) is patched, and originals are backed up.
 
+## Disabling / Uninstalling
+
+To **temporarily disable** LaTeX rendering, use the command:
+
+`Ctrl+Shift+P` → **Claude Code KaTeX: Disable LaTeX Rendering** → reload when prompted.
+
+To **re-enable**, use **Claude Code KaTeX: Enable LaTeX Rendering**.
+
+**Uninstalling** the extension from the Extensions panel automatically cleans up the patch.
+
+> **Why not the Disable button in the Extensions panel?** The patch lives in Claude Code's webview files on disk. Claude Code loads its webview before this extension activates, so if we removed the patch on deactivate, the webview would load unpatched files before we could re-apply. Keeping files patched on disk ensures it works reliably across restarts.
+
 ## Notes
 
 - After Claude Code updates, you may need to reload the window once for the re-patch to take effect.
 - There may be a brief flash of raw LaTeX during streaming responses (200ms debounce).
+- Code blocks are never affected. `$variable` inside `` `code` `` or code fences is left alone.
 - This is a temporary workaround until [anthropics/claude-code#16446](https://github.com/anthropics/claude-code/issues/16446) is resolved. Once Claude Code ships native LaTeX support, this extension can be uninstalled.
 
 ## License
