@@ -6,6 +6,12 @@ Temporary workaround for [anthropics/claude-code#16446](https://github.com/anthr
 
 Renders `$...$` (inline) and `$$...$$` (display) math expressions in Claude's chat responses.
 
+## Demo
+
+| Before | After |
+|--------|-------|
+| <img width="505" alt="Image" src="https://github.com/user-attachments/assets/4813f18c-fcaa-419f-a636-a8c3651f8ec4" /> | <img width="503" alt="Image" src="https://github.com/user-attachments/assets/a26b6b99-9e0c-4643-8467-549134068ee4" /> |
+
 ## Install
 
 ### From VS Code Marketplace
