@@ -317,8 +317,10 @@ describe('getMutationObserverScript', () => {
     expect(script).toContain("left: '$$', right: '$$', display: true");
   });
 
-  test('includes inline math delimiters ($)', () => {
-    expect(script).toContain("left: '$', right: '$', display: false");
+  test('does NOT include raw $ delimiter (uses preprocessor instead)', () => {
+    expect(script).not.toContain("left: '$', right: '$'");
+    expect(script).toContain('preprocessMath');
+    expect(script).toContain('MATH_REGEX');
   });
 
   test('includes LaTeX bracket delimiters (\\[...\\])', () => {
@@ -769,9 +771,9 @@ describe('edge cases', () => {
   test('patch content includes all required KaTeX config', () => {
     applyPatch(extDir, vendorDir);
     const js = fs.readFileSync(path.join(extDir, 'webview', 'index.js'), 'utf8');
-    // Must have all delimiter types
+    // Must have safe delimiter types (no raw $ — handled by preprocessMath)
     expect(js).toContain("left: '$$'");
-    expect(js).toContain("left: '$'");
+    expect(js).toContain('preprocessMath');
     // Must ignore code blocks
     expect(js).toContain("'pre'");
     expect(js).toContain("'code'");

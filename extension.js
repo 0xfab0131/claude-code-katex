@@ -113,6 +113,38 @@ function getMutationObserverScript() {
   var activeContainer = null;
   var SELECTOR = '[class*="messagesContainer"]';
 
+  // Convert $...$ to \\(...\\) only when the content looks like math, not currency.
+  // Currency pattern: $ followed by digit ($100, $2.50, $1,000, $5M).
+  // Math pattern: $ followed by letter, backslash, or symbol ($x^2$, $\\frac{1}{2}$).
+  // This runs before renderMathInElement so we can use only unambiguous delimiters.
+  var MATH_REGEX = /(?<![\\\\$])\\$(?!\\$)([^\\s\\d$](?:[^$\\n]*?[^\\s$])?)\\$(?!\\$)/g;
+  var MATH_REGEX_SINGLE = /(?<![\\\\$])\\$(?!\\$)([^\\s\\d$])\\$(?!\\$)/g;
+  var IGNORED_TAGS = {SCRIPT:1,NOSCRIPT:1,STYLE:1,TEXTAREA:1,PRE:1,CODE:1,OPTION:1};
+
+  function preprocessMath(container) {
+    var walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT, null, false);
+    var nodes = [];
+    while (walker.nextNode()) nodes.push(walker.currentNode);
+
+    for (var i = 0; i < nodes.length; i++) {
+      var node = nodes[i];
+      var text = node.textContent;
+      if (text.indexOf('$') === -1) continue;
+      // Skip nodes inside already-rendered KaTeX or ignored tags
+      var parent = node.parentElement;
+      if (!parent) continue;
+      if (parent.closest && parent.closest('.katex,.katex-display')) continue;
+      if (IGNORED_TAGS[parent.tagName]) continue;
+
+      // Two passes: multi-char math ($x^2$) and single-char math ($x$)
+      var replaced = text.replace(MATH_REGEX, '\\\\($1\\\\)');
+      replaced = replaced.replace(MATH_REGEX_SINGLE, '\\\\($1\\\\)');
+      if (replaced !== text) {
+        node.textContent = replaced;
+      }
+    }
+  }
+
   function renderMath() {
     if (isRendering) return;
     if (typeof renderMathInElement !== 'function') return;
@@ -121,12 +153,12 @@ function getMutationObserverScript() {
 
     isRendering = true;
     try {
+      preprocessMath(container);
       renderMathInElement(container, {
         delimiters: [
           {left: '$$', right: '$$', display: true},
           {left: '\\\\[', right: '\\\\]', display: true},
-          {left: '\\\\(', right: '\\\\)', display: false},
-          {left: '$', right: '$', display: false}
+          {left: '\\\\(', right: '\\\\)', display: false}
         ],
         throwOnError: false,
         ignoredTags: ['script', 'noscript', 'style', 'textarea', 'pre', 'code', 'option'],

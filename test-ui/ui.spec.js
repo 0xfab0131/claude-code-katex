@@ -333,3 +333,194 @@ test.describe('KaTeX patch - selector robustness', () => {
     expect(errors).toEqual([]);
   });
 });
+
+// Helper: inject a message and return its bubble element's text + katex count
+async function injectAndCheck(page, html, WAIT) {
+  const id = 'test-msg-' + Date.now();
+  await page.evaluate(({ html, id }) => {
+    const container = document.querySelector('[class*="messagesContainer"]');
+    const msg = document.createElement('div');
+    msg.className = 'message_07S1Yg assistant';
+    msg.innerHTML = '<div class="message-label">Claude</div><div class="message-bubble" id="' + id + '">' + html + '</div>';
+    container.appendChild(msg);
+  }, { html, id });
+  await page.waitForTimeout(WAIT);
+  const bubble = page.locator('#' + id);
+  return {
+    text: await bubble.textContent(),
+    katex: await bubble.locator('.katex').count(),
+    katexDisplay: await bubble.locator('.katex-display').count(),
+  };
+}
+
+test.describe('Currency $ vs math $ disambiguation', () => {
+  test.beforeEach(async ({ page }) => {
+    await page.goto(`http://localhost:${PORT}/`);
+    await page.waitForTimeout(RENDER_WAIT);
+  });
+
+  // --- Currency: must NOT render as math ---
+
+  test('$100 is not rendered as math', async ({ page }) => {
+    const r = await injectAndCheck(page, 'The price is $100.', RENDER_WAIT);
+    expect(r.katex).toBe(0);
+    expect(r.text).toContain('$100');
+  });
+
+  test('$2.50 is not rendered as math', async ({ page }) => {
+    const r = await injectAndCheck(page, 'It costs $2.50 per unit.', RENDER_WAIT);
+    expect(r.katex).toBe(0);
+    expect(r.text).toContain('$2.50');
+  });
+
+  test('$1,000 is not rendered as math', async ({ page }) => {
+    const r = await injectAndCheck(page, 'The budget is $1,000 this quarter.', RENDER_WAIT);
+    expect(r.katex).toBe(0);
+    expect(r.text).toContain('$1,000');
+  });
+
+  test('$5M is not rendered as math', async ({ page }) => {
+    const r = await injectAndCheck(page, 'Revenue hit $5M last year.', RENDER_WAIT);
+    expect(r.katex).toBe(0);
+    expect(r.text).toContain('$5M');
+  });
+
+  test('multiple currency amounts do not pair up', async ({ page }) => {
+    const r = await injectAndCheck(page, 'Budget: $50 for food, $30 for transport, $20 for tickets.', RENDER_WAIT);
+    expect(r.katex).toBe(0);
+    expect(r.text).toContain('$50');
+    expect(r.text).toContain('$30');
+    expect(r.text).toContain('$20');
+  });
+
+  test('$100 and $200 in same sentence do not pair', async ({ page }) => {
+    const r = await injectAndCheck(page, '$100 is less than $200.', RENDER_WAIT);
+    expect(r.katex).toBe(0);
+    expect(r.text).toContain('$100');
+    expect(r.text).toContain('$200');
+  });
+
+  // --- Math: must render ---
+
+  test('$x^2$ renders as inline math', async ({ page }) => {
+    const r = await injectAndCheck(page, 'The value of $x^2$ is positive.', RENDER_WAIT);
+    expect(r.katex).toBeGreaterThanOrEqual(1);
+  });
+
+  test('$E = mc^2$ renders as inline math', async ({ page }) => {
+    const r = await injectAndCheck(page, 'Einstein showed that $E = mc^2$.', RENDER_WAIT);
+    expect(r.katex).toBeGreaterThanOrEqual(1);
+  });
+
+  test('$\\frac{1}{2}$ renders as inline math', async ({ page }) => {
+    const r = await injectAndCheck(page, 'The fraction $\\frac{1}{2}$ is one half.', RENDER_WAIT);
+    expect(r.katex).toBeGreaterThanOrEqual(1);
+  });
+
+  test('single letter $x$ renders as inline math', async ({ page }) => {
+    const r = await injectAndCheck(page, 'Let $x$ be a variable.', RENDER_WAIT);
+    expect(r.katex).toBeGreaterThanOrEqual(1);
+  });
+
+  test('$-5$ (negative number) renders as inline math', async ({ page }) => {
+    const r = await injectAndCheck(page, 'The result is $-5$.', RENDER_WAIT);
+    expect(r.katex).toBeGreaterThanOrEqual(1);
+  });
+
+  test('$$...$ (display math) still works', async ({ page }) => {
+    const r = await injectAndCheck(page, '$$\\int_0^1 f(x) dx$$', RENDER_WAIT);
+    expect(r.katexDisplay).toBeGreaterThanOrEqual(1);
+  });
+
+  test('\\(...\\) renders as inline math', async ({ page }) => {
+    const r = await injectAndCheck(page, 'Also \\(a + b\\) works.', RENDER_WAIT);
+    expect(r.katex).toBeGreaterThanOrEqual(1);
+  });
+
+  test('\\[...\\] renders as display math', async ({ page }) => {
+    const r = await injectAndCheck(page, '\\[\\sum_{i=1}^n i = \\frac{n(n+1)}{2}\\]', RENDER_WAIT);
+    expect(r.katexDisplay).toBeGreaterThanOrEqual(1);
+  });
+
+  // --- More currency formats ---
+
+  test('$0.99 is not rendered as math', async ({ page }) => {
+    const r = await injectAndCheck(page, 'On sale for $0.99 each.', RENDER_WAIT);
+    expect(r.katex).toBe(0);
+    expect(r.text).toContain('$0.99');
+  });
+
+  test('$50.00 is not rendered as math', async ({ page }) => {
+    const r = await injectAndCheck(page, 'The total comes to $50.00.', RENDER_WAIT);
+    expect(r.katex).toBe(0);
+    expect(r.text).toContain('$50.00');
+  });
+
+  test('$1,234.56 is not rendered as math', async ({ page }) => {
+    const r = await injectAndCheck(page, 'Grand total: $1,234.56 after tax.', RENDER_WAIT);
+    expect(r.katex).toBe(0);
+    expect(r.text).toContain('$1,234.56');
+  });
+
+  test('$3.5B is not rendered as math', async ({ page }) => {
+    const r = await injectAndCheck(page, 'The company raised $3.5B in funding.', RENDER_WAIT);
+    expect(r.katex).toBe(0);
+    expect(r.text).toContain('$3.5B');
+  });
+
+  test('$50k is not rendered as math', async ({ page }) => {
+    const r = await injectAndCheck(page, 'Salaries start at $50k.', RENDER_WAIT);
+    expect(r.katex).toBe(0);
+    expect(r.text).toContain('$50k');
+  });
+
+  test('price range $50-$100 does not pair', async ({ page }) => {
+    const r = await injectAndCheck(page, 'Expect to pay $50-$100 for this.', RENDER_WAIT);
+    expect(r.katex).toBe(0);
+    expect(r.text).toContain('$50');
+    expect(r.text).toContain('$100');
+  });
+
+  // --- More math edge cases ---
+
+  test('$(a+b)^2$ renders (starts with paren)', async ({ page }) => {
+    const r = await injectAndCheck(page, 'Expand $(a+b)^2$ to get the result.', RENDER_WAIT);
+    expect(r.katex).toBeGreaterThanOrEqual(1);
+  });
+
+  test('$\\alpha + \\beta$ renders (Greek letters)', async ({ page }) => {
+    const r = await injectAndCheck(page, 'Let $\\alpha + \\beta = \\gamma$.', RENDER_WAIT);
+    expect(r.katex).toBeGreaterThanOrEqual(1);
+  });
+
+  test('$\\{1,2,3\\}$ renders (set notation)', async ({ page }) => {
+    const r = await injectAndCheck(page, 'The set $\\{1,2,3\\}$ has three elements.', RENDER_WAIT);
+    expect(r.katex).toBeGreaterThanOrEqual(1);
+  });
+
+  test('$a + b$ renders (simple with spaces)', async ({ page }) => {
+    const r = await injectAndCheck(page, 'Compute $a + b$ for the answer.', RENDER_WAIT);
+    expect(r.katex).toBeGreaterThanOrEqual(1);
+  });
+
+  test('$f(x)$ renders (function notation)', async ({ page }) => {
+    const r = await injectAndCheck(page, 'Define $f(x)$ as the input function.', RENDER_WAIT);
+    expect(r.katex).toBeGreaterThanOrEqual(1);
+  });
+
+  // --- Mixed: currency and math in same message ---
+
+  test('currency and math coexist correctly', async ({ page }) => {
+    const r = await injectAndCheck(page,
+      'The cost is $100 and the formula is $x^2 + y^2 = r^2$.', RENDER_WAIT);
+    expect(r.katex).toBeGreaterThanOrEqual(1);
+    expect(r.text).toContain('$100');
+  });
+
+  test('multiple math expressions with currency between them', async ({ page }) => {
+    const r = await injectAndCheck(page,
+      'Given $a = 1$ and $b = 2$, the total cost is $300.', RENDER_WAIT);
+    expect(r.katex).toBeGreaterThanOrEqual(2);
+    expect(r.text).toContain('$300');
+  });
+});
