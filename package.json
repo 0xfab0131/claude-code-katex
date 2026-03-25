@@ -2,7 +2,7 @@
   "name": "claude-code-katex",
   "displayName": "Claude Code KaTeX",
   "description": "Adds LaTeX math rendering to Claude Code chat using KaTeX",
-  "version": "1.5.0",
+  "version": "1.6.0",
   "publisher": "nuriyev",
   "license": "MIT",
   "icon": "icon.png",
@@ -51,6 +51,7 @@
   },
   "scripts": {
     "test": "jest",
+    "test:ui": "npx playwright test",
     "vscode:uninstall": "node ./uninstall-hook.js"
   },
   "extensionDependencies": [
@@ -61,7 +62,11 @@
     "url": "https://github.com/MahammadNuriyev62/claude-code-katex/issues"
   },
   "homepage": "https://github.com/MahammadNuriyev62/claude-code-katex#readme",
+  "jest": {
+    "testPathIgnorePatterns": ["/node_modules/", "/test-ui/"]
+  },
   "devDependencies": {
+    "@playwright/test": "^1.58.2",
     "jest": "^30.3.0"
   }
 }

@@ -291,16 +291,26 @@ describe('getMutationObserverScript', () => {
     expect(script).toContain('})();');
   });
 
-  test('watches #root element', () => {
+  test('uses #root for bootstrap only', () => {
     expect(script).toContain("document.getElementById('root')");
   });
 
-  test('creates a MutationObserver', () => {
+  test('targets messagesContainer for rendering (not #root)', () => {
+    expect(script).toContain('[class*="messagesContainer"]');
+    expect(script).toContain('renderMathInElement(container,');
+    expect(script).not.toContain('renderMathInElement(root,');
+  });
+
+  test('creates message observer and root observer', () => {
+    expect(script).toContain('messageObserver');
+    expect(script).toContain('rootObserver');
     expect(script).toContain('new MutationObserver');
   });
 
-  test('calls renderMathInElement', () => {
-    expect(script).toContain('renderMathInElement(root,');
+  test('re-attaches when messages container changes', () => {
+    expect(script).toContain('activeContainer');
+    expect(script).toContain('container !== activeContainer');
+    expect(script).toContain('observeMessages');
   });
 
   test('includes display math delimiters ($$)', () => {

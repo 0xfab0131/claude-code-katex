@@ -110,16 +110,18 @@ function getMutationObserverScript() {
 (function() {
   var renderTimeout = null;
   var isRendering = false;
+  var activeContainer = null;
+  var SELECTOR = '[class*="messagesContainer"]';
 
   function renderMath() {
     if (isRendering) return;
     if (typeof renderMathInElement !== 'function') return;
-    var root = document.getElementById('root');
-    if (!root) return;
+    var container = document.querySelector(SELECTOR);
+    if (!container) return;
 
     isRendering = true;
     try {
-      renderMathInElement(root, {
+      renderMathInElement(container, {
         delimiters: [
           {left: '$$', right: '$$', display: true},
           {left: '\\\\[', right: '\\\\]', display: true},
@@ -142,7 +144,7 @@ function getMutationObserverScript() {
     renderTimeout = setTimeout(renderMath, 200);
   }
 
-  var observer = new MutationObserver(function(mutations) {
+  var messageObserver = new MutationObserver(function(mutations) {
     for (var i = 0; i < mutations.length; i++) {
       if (mutations[i].addedNodes.length > 0 || mutations[i].type === 'characterData') {
         debouncedRender();
@@ -151,13 +153,34 @@ function getMutationObserverScript() {
     }
   });
 
+  function observeMessages(container) {
+    if (activeContainer === container) return;
+    if (activeContainer) messageObserver.disconnect();
+    activeContainer = container;
+    messageObserver.observe(container, { childList: true, subtree: true, characterData: true });
+    renderMath();
+  }
+
+  // Lightweight root watcher: detects when the messages container appears
+  // or is replaced (e.g. navigating between chats). Only watches childList
+  // (no characterData), so typing in the input never triggers this.
+  var rootObserver = new MutationObserver(function() {
+    var container = document.querySelector(SELECTOR);
+    if (container && container !== activeContainer) {
+      observeMessages(container);
+    }
+  });
+
   function startObserving() {
     var root = document.getElementById('root');
-    if (root) {
-      observer.observe(root, { childList: true, subtree: true, characterData: true });
-      renderMath();
-    } else {
+    if (!root) {
       setTimeout(startObserving, 200);
+      return;
+    }
+    rootObserver.observe(root, { childList: true, subtree: true });
+    var container = document.querySelector(SELECTOR);
+    if (container) {
+      observeMessages(container);
     }
   }
 
