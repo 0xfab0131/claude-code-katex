@@ -508,6 +508,33 @@ test.describe('Currency $ vs math $ disambiguation', () => {
     expect(r.katex).toBeGreaterThanOrEqual(1);
   });
 
+  // --- Math starting with digit ---
+
+  test('$3x + 2y$ renders (digit then letter)', async ({ page }) => {
+    const r = await injectAndCheck(page, 'Solve $3x + 2y = 12$.', RENDER_WAIT);
+    expect(r.katex).toBeGreaterThanOrEqual(1);
+  });
+
+  test('$2^{10}$ renders (digit then caret)', async ({ page }) => {
+    const r = await injectAndCheck(page, 'We know $2^{10} = 1024$.', RENDER_WAIT);
+    expect(r.katex).toBeGreaterThanOrEqual(1);
+  });
+
+  test('$3\\pi$ renders (digit then backslash)', async ({ page }) => {
+    const r = await injectAndCheck(page, 'The angle is $3\\pi$ radians.', RENDER_WAIT);
+    expect(r.katex).toBeGreaterThanOrEqual(1);
+  });
+
+  test('$10n$ renders (multi-digit then letter)', async ({ page }) => {
+    const r = await injectAndCheck(page, 'The complexity is $10n$.', RENDER_WAIT);
+    expect(r.katex).toBeGreaterThanOrEqual(1);
+  });
+
+  test('$3 + 4 = 7$ renders (digit then space then operator)', async ({ page }) => {
+    const r = await injectAndCheck(page, 'Simple: $3 + 4 = 7$.', RENDER_WAIT);
+    expect(r.katex).toBeGreaterThanOrEqual(1);
+  });
+
   // --- Mixed: currency and math in same message ---
 
   test('currency and math coexist correctly', async ({ page }) => {

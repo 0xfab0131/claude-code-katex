@@ -114,11 +114,19 @@ function getMutationObserverScript() {
   var SELECTOR = '[class*="messagesContainer"]';
 
   // Convert $...$ to \\(...\\) only when the content looks like math, not currency.
-  // Currency pattern: $ followed by digit ($100, $2.50, $1,000, $5M).
-  // Math pattern: $ followed by letter, backslash, or symbol ($x^2$, $\\frac{1}{2}$).
   // This runs before renderMathInElement so we can use only unambiguous delimiters.
-  var MATH_REGEX = /(?<![\\\\$])\\$(?!\\$)([^\\s\\d$](?:[^$\\n]*?[^\\s$])?)\\$(?!\\$)/g;
-  var MATH_REGEX_SINGLE = /(?<![\\\\$])\\$(?!\\$)([^\\s\\d$])\\$(?!\\$)/g;
+  //
+  // Uses Pandoc's well-tested tex_math_dollars rules:
+  // 1. Opening $ must be followed by a non-space character
+  // 2. Closing $ must be preceded by a non-space character
+  // 3. Closing $ must NOT be followed immediately by a digit
+  //
+  // This handles all cases with a single regex:
+  // - $x^2$, $3x + 2y$, $3 + 4 = 7$ -> math (rules 1+2 pass, rule 3 OK)
+  // - $100, $2.50, $50k -> no closing $ -> no match
+  // - $100 and $200 -> closing preceded by space -> rule 2 fails
+  // - $50,$30,$20 -> each closing $ followed by digit -> rule 3 fails
+  var MATH_REGEX = /(?<![\\\\$])\\$(?!\\$)(?=\\S)([^$\\n]+?)(?<=\\S)\\$(?!\\d)(?!\\$)/g;
   var IGNORED_TAGS = {SCRIPT:1,NOSCRIPT:1,STYLE:1,TEXTAREA:1,PRE:1,CODE:1,OPTION:1};
 
   function preprocessMath(container) {
@@ -136,9 +144,8 @@ function getMutationObserverScript() {
       if (parent.closest && parent.closest('.katex,.katex-display')) continue;
       if (IGNORED_TAGS[parent.tagName]) continue;
 
-      // Two passes: multi-char math ($x^2$) and single-char math ($x$)
+      MATH_REGEX.lastIndex = 0;
       var replaced = text.replace(MATH_REGEX, '\\\\($1\\\\)');
-      replaced = replaced.replace(MATH_REGEX_SINGLE, '\\\\($1\\\\)');
       if (replaced !== text) {
         node.textContent = replaced;
       }
