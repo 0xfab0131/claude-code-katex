@@ -550,4 +550,164 @@ test.describe('Currency $ vs math $ disambiguation', () => {
     expect(r.katex).toBeGreaterThanOrEqual(2);
     expect(r.text).toContain('$300');
   });
+
+  // --- Hard edge cases: currency that could false-pair ---
+
+  test('$5 then $10 in separate sentences', async ({ page }) => {
+    const r = await injectAndCheck(page,
+      'I have $5. He has $10. She has $20.', RENDER_WAIT);
+    expect(r.katex).toBe(0);
+  });
+
+  test('($50) parenthesized currency', async ({ page }) => {
+    const r = await injectAndCheck(page, 'The fee is ($50).', RENDER_WAIT);
+    expect(r.katex).toBe(0);
+    expect(r.text).toContain('$50');
+  });
+
+  test('$50/month currency with unit', async ({ page }) => {
+    const r = await injectAndCheck(page, 'Costs $50/month per seat.', RENDER_WAIT);
+    expect(r.katex).toBe(0);
+  });
+
+  test('$50+ currency with plus', async ({ page }) => {
+    const r = await injectAndCheck(page, 'Must spend $50+ to qualify.', RENDER_WAIT);
+    expect(r.katex).toBe(0);
+  });
+
+  test('~$50 approximate currency', async ({ page }) => {
+    const r = await injectAndCheck(page, 'It costs ~$50 approximately.', RENDER_WAIT);
+    expect(r.katex).toBe(0);
+  });
+
+  test('$50 to $100 range with words', async ({ page }) => {
+    const r = await injectAndCheck(page, 'Price ranges from $50 to $100 per unit.', RENDER_WAIT);
+    expect(r.katex).toBe(0);
+  });
+
+  test('$1M. sentence ending', async ({ page }) => {
+    const r = await injectAndCheck(page, 'They raised $1M. Next round is $5M.', RENDER_WAIT);
+    expect(r.katex).toBe(0);
+  });
+
+  test('$10/share currency with slash', async ({ page }) => {
+    const r = await injectAndCheck(page, 'Stock price is $10/share today.', RENDER_WAIT);
+    expect(r.katex).toBe(0);
+  });
+
+  // --- Hard edge cases: math that must render ---
+
+  test('$O(n^2)$ big-O notation', async ({ page }) => {
+    const r = await injectAndCheck(page, 'The algorithm runs in $O(n^2)$ time.', RENDER_WAIT);
+    expect(r.katex).toBeGreaterThanOrEqual(1);
+  });
+
+  test('$n!$ factorial', async ({ page }) => {
+    const r = await injectAndCheck(page, 'There are $n!$ permutations.', RENDER_WAIT);
+    expect(r.katex).toBeGreaterThanOrEqual(1);
+  });
+
+  test('$|x|$ absolute value', async ({ page }) => {
+    const r = await injectAndCheck(page, 'The absolute value is $|x|$ here.', RENDER_WAIT);
+    expect(r.katex).toBeGreaterThanOrEqual(1);
+  });
+
+  test('$\\sqrt{2}$ square root', async ({ page }) => {
+    const r = await injectAndCheck(page, 'It equals $\\sqrt{2}$ exactly.', RENDER_WAIT);
+    expect(r.katex).toBeGreaterThanOrEqual(1);
+  });
+
+  test('$\\vec{v}$ vector notation', async ({ page }) => {
+    const r = await injectAndCheck(page, 'Let $\\vec{v}$ be a vector.', RENDER_WAIT);
+    expect(r.katex).toBeGreaterThanOrEqual(1);
+  });
+
+  test('$a_1, a_2, \\ldots, a_n$ sequence', async ({ page }) => {
+    const r = await injectAndCheck(page, 'The sequence $a_1, a_2, \\ldots, a_n$ converges.', RENDER_WAIT);
+    expect(r.katex).toBeGreaterThanOrEqual(1);
+  });
+
+  test('$\\binom{n}{k}$ binomial', async ({ page }) => {
+    const r = await injectAndCheck(page, 'Choose $\\binom{n}{k}$ ways.', RENDER_WAIT);
+    expect(r.katex).toBeGreaterThanOrEqual(1);
+  });
+
+  test('$\\overline{x}$ mean', async ({ page }) => {
+    const r = await injectAndCheck(page, 'The mean is $\\overline{x}$ here.', RENDER_WAIT);
+    expect(r.katex).toBeGreaterThanOrEqual(1);
+  });
+
+  test('$x \\in \\mathbb{R}$ set membership', async ({ page }) => {
+    const r = await injectAndCheck(page, 'Where $x \\in \\mathbb{R}$ is real.', RENDER_WAIT);
+    expect(r.katex).toBeGreaterThanOrEqual(1);
+  });
+
+  test('$\\lim_{x \\to 0} f(x)$ limit', async ({ page }) => {
+    const r = await injectAndCheck(page, 'Evaluate $\\lim_{x \\to 0} f(x)$ at zero.', RENDER_WAIT);
+    expect(r.katex).toBeGreaterThanOrEqual(1);
+  });
+
+  // --- Hard mixed: currency and math interleaved ---
+
+  test('spend $5 on $x$ items', async ({ page }) => {
+    const r = await injectAndCheck(page, 'Spend $5 on $x$ items.', RENDER_WAIT);
+    expect(r.katex).toBeGreaterThanOrEqual(1); // $x$ is math
+    expect(r.text).toContain('$5');             // $5 is currency
+  });
+
+  test('$x$ is $5', async ({ page }) => {
+    const r = await injectAndCheck(page, 'The variable $x$ is $5 today.', RENDER_WAIT);
+    expect(r.katex).toBeGreaterThanOrEqual(1); // $x$ is math
+    expect(r.text).toContain('$5');             // $5 is currency
+  });
+
+  test('costs $5; the variable $x$ is 3', async ({ page }) => {
+    const r = await injectAndCheck(page, 'It costs $5; the variable $x$ is 3.', RENDER_WAIT);
+    expect(r.katex).toBeGreaterThanOrEqual(1); // $x$ is math
+    expect(r.text).toContain('$5');             // $5 is currency
+  });
+
+  test('three math expressions in one sentence', async ({ page }) => {
+    const r = await injectAndCheck(page,
+      'If $a = 1$, $b = 2$, and $c = 3$, then $a + b + c = 6$.', RENDER_WAIT);
+    expect(r.katex).toBeGreaterThanOrEqual(4);
+  });
+
+  test('dense math: $x$, $y$, and $z$ are variables', async ({ page }) => {
+    const r = await injectAndCheck(page, 'Here $x$, $y$, and $z$ are variables.', RENDER_WAIT);
+    expect(r.katex).toBeGreaterThanOrEqual(3);
+  });
+
+  // --- Adversarial: should NOT crash ---
+
+  test('lone $ does not crash', async ({ page }) => {
+    const errors = [];
+    page.on('pageerror', (err) => errors.push(err.message));
+    await injectAndCheck(page, 'That costs $ or more.', RENDER_WAIT);
+    expect(errors).toEqual([]);
+  });
+
+  test('$$ with no content is display math not inline', async ({ page }) => {
+    const r = await injectAndCheck(page, 'Before $$x = 1$$ after.', RENDER_WAIT);
+    expect(r.katexDisplay).toBeGreaterThanOrEqual(1);
+  });
+
+  test('unmatched $ does not crash', async ({ page }) => {
+    const errors = [];
+    page.on('pageerror', (err) => errors.push(err.message));
+    await injectAndCheck(page, 'The price is $ and then some text with no closing.', RENDER_WAIT);
+    expect(errors).toEqual([]);
+  });
+
+  test('many $ in one message does not crash', async ({ page }) => {
+    const errors = [];
+    page.on('pageerror', (err) => errors.push(err.message));
+    await injectAndCheck(page,
+      'Prices: $10, $20, $30, $40, $50, $60, $70, $80, $90, $100.', RENDER_WAIT);
+    expect(errors).toEqual([]);
+    // None should render as math (all currency)
+    const r = await injectAndCheck(page,
+      'More: $10, $20, $30, $40, $50, $60, $70, $80, $90, $100.', RENDER_WAIT);
+    expect(r.katex).toBe(0);
+  });
 });
