@@ -3,8 +3,10 @@ node_modules/**
 install.sh
 uninstall.sh
 .gitignore
+.env
 *.test.js
 test-ui/**
+test-results/**
 playwright.config.js
 .playwright-mcp/**
 package-lock.json
