@@ -112,84 +112,296 @@ function getMutationObserverScript() {
   var isRendering = false;
   var activeContainer = null;
   var SELECTOR = '[class*="messagesContainer"]';
+  var KATEX_PROCESSED = 'data-katex-processed';
 
-  // Convert $...$ to \\(...\\) only when the content looks like math, not currency.
-  // This runs before renderMathInElement so we can use only unambiguous delimiters.
+  // preprocessMath uses a DOM-range approach because react-markdown (remark)
+  // splits $...$ across multiple DOM nodes when underscores in LaTeX trigger
+  // emphasis. For example, $\\tilde{T}_{\\text{travel}}^{(k)}$ becomes:
+  //   TextNode("$\\tilde{T}") <em> TextNode("{\\text{travel}}") </em> TextNode("^{(k)}$")
   //
-  // Uses Pandoc's well-tested tex_math_dollars rules:
-  // 1. Opening $ must be followed by a non-space character
-  // 2. Closing $ must be preceded by a non-space character
-  // 3. Closing $ must NOT be followed immediately by a digit
+  // We cannot use innerHTML replacement because react-markdown renders <a> tags
+  // with React event handlers (onClick for file links, onContextMenu). Setting
+  // innerHTML would destroy those handlers.
   //
-  // This handles all cases with a single regex:
-  // - $x^2$, $3x + 2y$, $3 + 4 = 7$ -> math (rules 1+2 pass, rule 3 OK)
-  // - $100, $2.50, $50k -> no closing $ -> no match
-  // - $100 and $200 -> closing preceded by space -> rule 2 fails
-  // - $50,$30,$20 -> each closing $ followed by digit -> rule 3 fails
-  var MATH_REGEX = /(?<![\\\\$])\\$(?!\\$)(?=\\S)([^$\\n]+?)(?<=\\S)\\$(?!\\d)(?!\\$)/g;
+  // Instead, we walk the DOM collecting text content across nodes, find $...$
+  // patterns in the concatenated text, then replace just the matched ranges
+  // with \\(...\\) text nodes, preserving all other DOM nodes untouched.
+
   var IGNORED_TAGS = {SCRIPT:1,NOSCRIPT:1,STYLE:1,TEXTAREA:1,PRE:1,CODE:1,OPTION:1};
 
-  function preprocessMath(container) {
-    var walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT, null, false);
-    var nodes = [];
-    while (walker.nextNode()) nodes.push(walker.currentNode);
-
-    for (var i = 0; i < nodes.length; i++) {
-      var node = nodes[i];
-      var text = node.textContent;
-      if (text.indexOf('$') === -1) continue;
-      // Skip nodes inside already-rendered KaTeX or ignored tags
+  // Collect text nodes under an element, building a map from character offsets
+  // in the concatenated string back to the individual DOM text nodes.
+  function collectTextMap(el) {
+    var walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT, null, false);
+    var entries = []; // {node, start, end}
+    var offset = 0;
+    while (walker.nextNode()) {
+      var node = walker.currentNode;
       var parent = node.parentElement;
-      if (!parent) continue;
-      if (parent.closest && parent.closest('.katex,.katex-display')) continue;
-      if (IGNORED_TAGS[parent.tagName]) continue;
+      if (parent && parent.closest && parent.closest('.katex,.katex-display')) continue;
+      if (parent && IGNORED_TAGS[parent.tagName]) continue;
+      var len = node.textContent.length;
+      entries.push({node: node, start: offset, end: offset + len});
+      offset += len;
+    }
+    return {entries: entries, text: entries.map(function(e){return e.node.textContent}).join('')};
+  }
 
-      MATH_REGEX.lastIndex = 0;
-      var replaced = text.replace(MATH_REGEX, '\\\\($1\\\\)');
-      if (replaced !== text) {
-        node.textContent = replaced;
+  // Find $...$ and $$...$$ in concatenated text. Returns array of {start, end, latex, display}.
+  function findMathRanges(text) {
+    var ranges = [];
+    var i = 0;
+    while (i < text.length) {
+      if (text[i] === '$') {
+        // Check for display math $$
+        if (text[i+1] === '$') {
+          var close = text.indexOf('$$', i + 2);
+          if (close !== -1) {
+            ranges.push({start: i, end: close + 2, latex: text.slice(i + 2, close), display: true});
+            i = close + 2;
+            continue;
+          }
+        }
+        // Check for inline math $
+        // Pandoc rules: after $ must be non-space, before closing $ must be non-space,
+        // closing $ must not be followed by digit
+        if (i > 0 && text[i-1] === '\\\\') { i++; continue; } // escaped
+        if (i > 0 && text[i-1] === '$') { i++; continue; } // part of $$
+        var j = i + 1;
+        if (j >= text.length || text[j] === ' ' || text[j] === '\\t' || text[j] === '\\n') { i++; continue; }
+        // Find closing $
+        while (j < text.length) {
+          if (text[j] === '$' && text[j-1] !== ' ' && text[j-1] !== '\\t' && text[j-1] !== '\\n') {
+            // Check not followed by digit and not part of $$
+            if (j + 1 < text.length && text[j+1] >= '0' && text[j+1] <= '9') { j++; continue; }
+            if (j + 1 < text.length && text[j+1] === '$') { j++; continue; }
+            // Found valid closing $
+            ranges.push({start: i, end: j + 1, latex: text.slice(i + 1, j), display: false});
+            i = j + 1;
+            break;
+          }
+          if (text[j] === '\\n') break; // inline math cannot span lines
+          j++;
+        }
+        if (j >= text.length || text[j] === '\\n') i++;
+      } else {
+        i++;
       }
+    }
+    return ranges;
+  }
+
+  // Replace matched math ranges in the DOM with \\(...\\) or \\[...\\] text nodes.
+  // Works backwards to preserve offsets. Only modifies text nodes in the match range;
+  // element nodes (like <a> with React handlers) between text nodes are removed only
+  // if they fall entirely within the math expression (e.g. <em> from underscore).
+  function replaceMathRange(entries, range) {
+    // Find which text nodes overlap with this range
+    var first = -1, last = -1;
+    for (var k = 0; k < entries.length; k++) {
+      if (entries[k].end > range.start && entries[k].start < range.end) {
+        if (first === -1) first = k;
+        last = k;
+      }
+    }
+    if (first === -1) return;
+
+    var delim = range.display ? ['\\\\[', '\\\\]'] : ['\\\\(', '\\\\)'];
+    var replacement = delim[0] + range.latex + delim[1];
+
+    if (first === last) {
+      // Math is within a single text node - simple case
+      var entry = entries[first];
+      var node = entry.node;
+      var localStart = range.start - entry.start;
+      var localEnd = range.end - entry.start;
+      var text = node.textContent;
+      node.textContent = text.slice(0, localStart) + replacement + text.slice(localEnd);
+      return;
+    }
+
+    // Math spans multiple text nodes (the common case when remark split it)
+    // Strategy: put all content into the first text node, remove intermediate
+    // nodes. Only remove element nodes if ALL their text content is within the
+    // math range (safe for <em>/<strong> from emphasis, won't touch <a> links
+    // unless the entire link text is part of the math expression).
+    var firstEntry = entries[first];
+    var lastEntry = entries[last];
+
+    // Trim the last text node (content after closing $)
+    var lastLocalEnd = range.end - lastEntry.start;
+    var afterText = lastEntry.node.textContent.slice(lastLocalEnd);
+
+    // Trim the first text node (content before opening $) and set replacement
+    var firstLocalStart = range.start - firstEntry.start;
+    var beforeText = firstEntry.node.textContent.slice(0, firstLocalStart);
+    firstEntry.node.textContent = beforeText + replacement + afterText;
+
+    // Remove intermediate and last nodes
+    for (var k = last; k > first; k--) {
+      var ent = entries[k];
+      var nodeToRemove = ent.node;
+      // If the text node's parent is an inline element (em, strong, etc.)
+      // that is entirely within the math range, remove the parent instead
+      var parentEl = nodeToRemove.parentElement;
+      if (parentEl && /^(EM|STRONG|I|B|DEL|S|SUB|SUP)$/i.test(parentEl.tagName)) {
+        // Only remove parent if all its text content is within the math range
+        var pStart = -1, pEnd = -1;
+        for (var m = 0; m < entries.length; m++) {
+          if (parentEl.contains(entries[m].node)) {
+            if (pStart === -1) pStart = entries[m].start;
+            pEnd = entries[m].end;
+          }
+        }
+        if (pStart >= range.start && pEnd <= range.end && parentEl.parentNode) {
+          parentEl.parentNode.removeChild(parentEl);
+          continue;
+        }
+      }
+      // Otherwise just remove the text node itself
+      if (nodeToRemove.parentNode) {
+        nodeToRemove.parentNode.removeChild(nodeToRemove);
+      }
+    }
+  }
+
+  function preprocessMath(el) {
+    var blocks = el.querySelectorAll('p, li, h1, h2, h3, h4, h5, h6, td, th, dd, dt, figcaption');
+    if (blocks.length === 0 && el.tagName && /^(P|LI|H[1-6]|TD|TH|DD|DT)$/i.test(el.tagName)) {
+      blocks = [el];
+    }
+    for (var i = 0; i < blocks.length; i++) {
+      var block = blocks[i];
+      if (block.closest && block.closest('pre, code, .katex, .katex-display')) continue;
+      var map = collectTextMap(block);
+      if (map.text.indexOf('$') === -1) continue;
+
+      var ranges = findMathRanges(map.text);
+      if (ranges.length === 0) continue;
+
+      // Process backwards to preserve text offsets
+      for (var r = ranges.length - 1; r >= 0; r--) {
+        replaceMathRange(map.entries, ranges[r]);
+      }
+    }
+  }
+
+  function hasMathContent(el) {
+    var text = el.textContent || '';
+    if (text.indexOf('$$') !== -1) return true;
+    if (text.indexOf('\\\\(') !== -1 || text.indexOf('\\\\[') !== -1) return true;
+    // Check for potential inline math: text contains at least two $ signs
+    var first = text.indexOf('$');
+    return first !== -1 && text.indexOf('$', first + 1) !== -1;
+  }
+
+  var RENDER_OPTS = {
+    delimiters: [
+      {left: '$$', right: '$$', display: true},
+      {left: '\\\\[', right: '\\\\]', display: true},
+      {left: '\\\\(', right: '\\\\)', display: false}
+    ],
+    throwOnError: false,
+    ignoredTags: ['script', 'noscript', 'style', 'textarea', 'pre', 'code', 'option'],
+    ignoredClasses: ['katex', 'katex-display']
+  };
+
+  function renderElement(el) {
+    if (typeof renderMathInElement !== 'function') return;
+    // Disconnect observer to prevent cascading mutations during rendering
+    messageObserver.disconnect();
+    try {
+      preprocessMath(el);
+      renderMathInElement(el, RENDER_OPTS);
+    } catch(e) {
+      console.error('[KaTeX Patch] render error:', e);
+    }
+    // Reconnect observer
+    if (activeContainer) {
+      messageObserver.observe(activeContainer, { childList: true, subtree: true, characterData: true });
     }
   }
 
   function renderMath() {
     if (isRendering) return;
-    if (typeof renderMathInElement !== 'function') return;
     var container = document.querySelector(SELECTOR);
     if (!container) return;
 
     isRendering = true;
     try {
-      preprocessMath(container);
-      renderMathInElement(container, {
-        delimiters: [
-          {left: '$$', right: '$$', display: true},
-          {left: '\\\\[', right: '\\\\]', display: true},
-          {left: '\\\\(', right: '\\\\)', display: false}
-        ],
-        throwOnError: false,
-        ignoredTags: ['script', 'noscript', 'style', 'textarea', 'pre', 'code', 'option'],
-        ignoredClasses: ['katex', 'katex-display']
-      });
-    } catch(e) {
-      console.error('[KaTeX Patch] render error:', e);
+      renderElement(container);
     } finally {
       isRendering = false;
     }
   }
 
-  function debouncedRender() {
+  // Process only newly added nodes instead of the whole container
+  function renderNewNodes(mutations) {
+    if (isRendering) return;
+    if (typeof renderMathInElement !== 'function') return;
+
+    var nodesToRender = [];
+    for (var i = 0; i < mutations.length; i++) {
+      var m = mutations[i];
+      if (m.type === 'characterData') {
+        // Text changed in an existing node - render its parent element
+        var parentEl = m.target.parentElement;
+        if (parentEl && !parentEl.closest('.katex,.katex-display') && hasMathContent(parentEl)) {
+          nodesToRender.push(parentEl);
+        }
+      } else if (m.addedNodes.length > 0) {
+        for (var j = 0; j < m.addedNodes.length; j++) {
+          var node = m.addedNodes[j];
+          if (node.nodeType === 1 && !node.classList.contains('katex') &&
+              !node.classList.contains('katex-display') && hasMathContent(node)) {
+            nodesToRender.push(node);
+          }
+        }
+      }
+    }
+
+    if (nodesToRender.length === 0) return;
+
+    isRendering = true;
+    try {
+      // Deduplicate: skip nodes that are children of other nodes in the list
+      var unique = nodesToRender.filter(function(node, idx) {
+        for (var k = 0; k < nodesToRender.length; k++) {
+          if (k !== idx && nodesToRender[k].contains(node)) return false;
+        }
+        return node.isConnected !== false; // skip detached nodes
+      });
+
+      for (var n = 0; n < unique.length; n++) {
+        renderElement(unique[n]);
+      }
+    } finally {
+      isRendering = false;
+    }
+  }
+
+  function debouncedRender(mutations) {
     if (renderTimeout) clearTimeout(renderTimeout);
-    renderTimeout = setTimeout(renderMath, 200);
+    renderTimeout = setTimeout(function() {
+      if (mutations && mutations.length > 0) {
+        renderNewNodes(mutations);
+      } else {
+        renderMath();
+      }
+    }, 200);
   }
 
   var messageObserver = new MutationObserver(function(mutations) {
+    // Quick filter: only care about added elements or text changes
+    var dominated = false;
     for (var i = 0; i < mutations.length; i++) {
       if (mutations[i].addedNodes.length > 0 || mutations[i].type === 'characterData') {
-        debouncedRender();
-        return;
+        dominated = true;
+        break;
       }
     }
+    if (!dominated) return;
+    debouncedRender(mutations);
   });
 
   function observeMessages(container) {
@@ -197,12 +409,10 @@ function getMutationObserverScript() {
     if (activeContainer) messageObserver.disconnect();
     activeContainer = container;
     messageObserver.observe(container, { childList: true, subtree: true, characterData: true });
+    // Initial full render for existing content
     renderMath();
   }
 
-  // Lightweight root watcher: detects when the messages container appears
-  // or is replaced (e.g. navigating between chats). Only watches childList
-  // (no characterData), so typing in the input never triggers this.
   var rootObserver = new MutationObserver(function() {
     var container = document.querySelector(SELECTOR);
     if (container && container !== activeContainer) {

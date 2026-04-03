@@ -297,7 +297,7 @@ describe('getMutationObserverScript', () => {
 
   test('targets messagesContainer for rendering (not #root)', () => {
     expect(script).toContain('[class*="messagesContainer"]');
-    expect(script).toContain('renderMathInElement(container,');
+    expect(script).toContain('renderMathInElement(el,');
     expect(script).not.toContain('renderMathInElement(root,');
   });
 
@@ -320,7 +320,7 @@ describe('getMutationObserverScript', () => {
   test('does NOT include raw $ delimiter (uses preprocessor instead)', () => {
     expect(script).not.toContain("left: '$', right: '$'");
     expect(script).toContain('preprocessMath');
-    expect(script).toContain('MATH_REGEX');
+    expect(script).toContain('findMathRanges');
   });
 
   test('includes LaTeX bracket delimiters (\\[...\\])', () => {
@@ -344,12 +344,29 @@ describe('getMutationObserverScript', () => {
   });
 
   test('debounces rendering with 200ms delay', () => {
-    expect(script).toContain('setTimeout(renderMath, 200)');
+    expect(script).toContain('}, 200)');
+    expect(script).toContain('debouncedRender');
   });
 
   test('handles DOMContentLoaded for early load', () => {
     expect(script).toContain("document.readyState === 'loading'");
     expect(script).toContain('DOMContentLoaded');
+  });
+
+  test('disconnects observer during rendering to prevent cascading mutations', () => {
+    expect(script).toContain('messageObserver.disconnect()');
+    // Must reconnect after rendering
+    expect(script).toContain('messageObserver.observe(activeContainer');
+  });
+
+  test('processes only newly added nodes when possible', () => {
+    expect(script).toContain('renderNewNodes');
+    expect(script).toContain('m.addedNodes');
+    expect(script).toContain('node.isConnected');
+  });
+
+  test('checks hasMathContent before rendering a node', () => {
+    expect(script).toContain('hasMathContent');
   });
 
   test('has re-entrant guard', () => {

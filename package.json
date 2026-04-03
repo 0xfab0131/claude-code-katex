@@ -63,10 +63,14 @@
   },
   "homepage": "https://github.com/MahammadNuriyev62/claude-code-katex#readme",
   "jest": {
-    "testPathIgnorePatterns": ["/node_modules/", "/test-ui/"]
+    "testPathIgnorePatterns": [
+      "/node_modules/",
+      "/test-ui/"
+    ]
   },
   "devDependencies": {
     "@playwright/test": "^1.58.2",
-    "jest": "^30.3.0"
+    "jest": "^30.3.0",
+    "jsdom": "^29.0.1"
   }
 }
