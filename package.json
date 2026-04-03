@@ -2,7 +2,7 @@
   "name": "claude-code-katex",
   "displayName": "Claude Code KaTeX",
   "description": "Adds LaTeX math rendering to Claude Code chat using KaTeX",
-  "version": "1.6.1",
+  "version": "1.7.1",
   "publisher": "nuriyev",
   "license": "MIT",
   "icon": "icon.png",
