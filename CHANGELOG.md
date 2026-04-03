@@ -1,6 +1,6 @@
 # Changelog
 
-## [1.6.0] - 2026-04-03
+## [1.6.1] - 2026-04-03
 
 ### Added
 - DOM-range-based math preprocessing that correctly handles LaTeX split across multiple DOM nodes by remark's emphasis parsing (e.g. `$\tilde{T}_{\text{travel}}^{(k)}$`)
