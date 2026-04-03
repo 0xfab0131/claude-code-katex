@@ -56,12 +56,24 @@ To **re-enable**, use **Claude Code KaTeX: Enable LaTeX Rendering**.
 
 > **Why not the Disable button in the Extensions panel?** The patch lives in Claude Code's webview files on disk. Claude Code loads its webview before this extension activates, so if we removed the patch on deactivate, the webview would load unpatched files before we could re-apply. Keeping files patched on disk ensures it works reliably across restarts.
 
-## Notes
+## Known Limitations
 
+- **Backslash spacing commands** (`\,` `\;` `\!`) are stripped by Claude Code's markdown parser before this extension sees them. There is no workaround at this time.
 - After Claude Code updates, you may need to reload the window once for the re-patch to take effect.
 - There may be a brief flash of raw LaTeX during streaming responses (200ms debounce).
 - Code blocks are never affected. `$variable` inside `` `code` `` or code fences is left alone.
 - This is a temporary workaround until [anthropics/claude-code#16446](https://github.com/anthropics/claude-code/issues/16446) is resolved. Once Claude Code ships native LaTeX support, this extension can be uninstalled.
+
+## Bugs & Feedback
+
+Found a rendering issue? Something not displaying correctly?
+
+Please [open an issue](https://github.com/MahammadNuriyev62/claude-code-katex/issues/new) with:
+- The LaTeX expression that failed
+- A screenshot of how it rendered (or didn't)
+- Your VS Code and Claude Code extension versions
+
+Every report helps improve the extension for everyone.
 
 ## License
 

@@ -207,7 +207,12 @@ function getMutationObserverScript() {
     if (first === -1) return;
 
     var delim = range.display ? ['\\\\[', '\\\\]'] : ['\\\\(', '\\\\)'];
-    var replacement = delim[0] + range.latex + delim[1];
+    // Fix backslashes stripped by remark/micromark CommonMark escape handling.
+    // micromark's characterEscape strips \\ before ASCII punctuation, so
+    // \\left\\{ becomes \\left{ and \\right\\} becomes \\right} in the DOM.
+    // These are never valid KaTeX, so we can safely restore them.
+    var fixedLatex = range.latex.replace(/\\\\left\\{/g, '\\\\left\\\\{').replace(/\\\\right\\}/g, '\\\\right\\\\}');
+    var replacement = delim[0] + fixedLatex + delim[1];
 
     if (first === last) {
       // Math is within a single text node - simple case

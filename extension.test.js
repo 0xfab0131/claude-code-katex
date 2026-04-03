@@ -377,6 +377,30 @@ describe('getMutationObserverScript', () => {
   test('sets throwOnError to false', () => {
     expect(script).toContain('throwOnError: false');
   });
+
+  test('fixes \\left{ and \\right} stripped by remark characterEscape', () => {
+    expect(script).toContain('fixedLatex');
+    // The generated JS should contain the regex that matches \left{ and \right}
+    expect(script).toContain('\\left\\{');
+    expect(script).toContain('\\right\\}');
+  });
+
+  test('fixedLatex regex correctly restores \\left\\{ and \\right\\}', () => {
+    // Extract and eval the fix logic from the generated script
+    // In the generated JS: range.latex.replace(/\\left\{/g, '\\left\\{').replace(/\\right\}/g, '\\right\\}')
+    // At runtime, the DOM text has \left{ (backslash before { was stripped by remark)
+    const input = '\\left{ \\sum_{k=0}^{n} \\binom{n}{k} x^k y^{n-k} \\right}';
+    const fixed = input.replace(/\\left\{/g, '\\left\\{').replace(/\\right\}/g, '\\right\\}');
+    expect(fixed).toBe('\\left\\{ \\sum_{k=0}^{n} \\binom{n}{k} x^k y^{n-k} \\right\\}');
+  });
+
+  test('fixedLatex regex does not touch \\left( or \\left[ or grouping braces', () => {
+    const fix = (s) => s.replace(/\\left\{/g, '\\left\\{').replace(/\\right\}/g, '\\right\\}');
+    expect(fix('\\left( x \\right)')).toBe('\\left( x \\right)');
+    expect(fix('\\left[ x \\right]')).toBe('\\left[ x \\right]');
+    expect(fix('\\left. x \\right|')).toBe('\\left. x \\right|');
+    expect(fix('\\frac{a}{b}')).toBe('\\frac{a}{b}');
+  });
 });
 
 // ============================================================
