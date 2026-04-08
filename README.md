@@ -2,6 +2,8 @@
 
 Adds LaTeX math rendering to the [Claude Code](https://marketplace.visualstudio.com/items?itemName=anthropic.claude-code) VSCode extension using [KaTeX](https://katex.org/).
 
+[![Installs](https://img.shields.io/visual-studio-marketplace/i/nuriyev.claude-code-katex)](https://marketplace.visualstudio.com/items?itemName=nuriyev.claude-code-katex)
+
 Temporary workaround for [anthropics/claude-code#16446](https://github.com/anthropics/claude-code/issues/16446) until native LaTeX rendering is added.
 
 Renders `$...$` (inline) and `$$...$$` (display) math expressions in Claude's chat responses.
