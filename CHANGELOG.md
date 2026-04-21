@@ -1,5 +1,10 @@
 # Changelog
 
+## [1.7.5] - 2026-04-21
+
+### Fixed
+- Package size regression: 1.7.4 accidentally bundled development directories and ballooned to 17 MB. Restored to ~1 MB.
+
 ## [1.7.4] - 2026-04-21
 
 ### Changed
