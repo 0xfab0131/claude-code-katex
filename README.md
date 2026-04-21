@@ -1,6 +1,6 @@
-# Claude Code KaTeX
+# Claude Code LaTeX
 
-Adds LaTeX math rendering to the [Claude Code](https://marketplace.visualstudio.com/items?itemName=anthropic.claude-code) VSCode extension using [KaTeX](https://katex.org/).
+Adds LaTeX math rendering to the [Claude Code](https://marketplace.visualstudio.com/items?itemName=anthropic.claude-code) VSCode extension. Rendered with [KaTeX](https://katex.org/).
 
 [![Installs](https://img.shields.io/visual-studio-marketplace/i/nuriyev.claude-code-katex)](https://marketplace.visualstudio.com/items?itemName=nuriyev.claude-code-katex)
 
@@ -18,7 +18,7 @@ Renders `$...$` (inline) and `$$...$$` (display) math expressions in Claude's ch
 
 ### From VS Code Marketplace
 
-Search for **"Claude Code KaTeX"** in the Extensions tab, or:
+Search for **"Claude Code LaTeX"** in the Extensions tab, or:
 
 ```bash
 code --install-extension nuriyev.claude-code-katex
@@ -34,9 +34,9 @@ code --install-extension nuriyev.claude-code-katex
 
 The extension patches Claude Code automatically on startup. If you need manual control:
 
-- `Ctrl+Shift+P` → **Claude Code KaTeX: Enable LaTeX Rendering**
-- `Ctrl+Shift+P` → **Claude Code KaTeX: Disable LaTeX Rendering**
-- `Ctrl+Shift+P` → **Claude Code KaTeX: Check Status**
+- `Ctrl+Shift+P` → **Claude Code LaTeX: Enable**
+- `Ctrl+Shift+P` → **Claude Code LaTeX: Disable**
+- `Ctrl+Shift+P` → **Claude Code LaTeX: Status**
 
 ## How it works
 
@@ -50,9 +50,9 @@ When Claude Code updates, the patch is automatically re-applied.
 
 To **temporarily disable** LaTeX rendering, use the command:
 
-`Ctrl+Shift+P` → **Claude Code KaTeX: Disable LaTeX Rendering** → reload when prompted.
+`Ctrl+Shift+P` → **Claude Code LaTeX: Disable** → reload when prompted.
 
-To **re-enable**, use **Claude Code KaTeX: Enable LaTeX Rendering**.
+To **re-enable**, use **Claude Code LaTeX: Enable**.
 
 **Uninstalling** the extension from the Extensions panel automatically cleans up the patch.
 
