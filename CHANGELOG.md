@@ -1,5 +1,10 @@
 # Changelog
 
+## [1.7.3] - 2026-04-21
+
+### Changed
+- Display name simplified to "Claude Code LaTeX". KaTeX is an implementation detail.
+
 ## [1.7.2] - 2026-04-21
 
 ### Fixed
