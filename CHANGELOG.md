@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.7.4] - 2026-04-21
+
+### Changed
+- Command palette entries now say "Claude Code LaTeX: Enable / Disable / Status" (previously "KaTeX").
+- Status messages and console logs updated to match.
+
 ## [1.7.3] - 2026-04-21
 
 ### Changed

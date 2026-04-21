@@ -2,7 +2,7 @@
   "name": "claude-code-katex",
   "displayName": "Claude Code LaTeX",
   "description": "Adds LaTeX math rendering to Claude Code chat — inline $...$, display $$...$$, and \\(...\\) / \\[...\\]",
-  "version": "1.7.3",
+  "version": "1.7.4",
   "publisher": "nuriyev",
   "license": "MIT",
   "icon": "icon.png",
@@ -40,15 +40,15 @@
     "commands": [
       {
         "command": "claude-code-katex.enable",
-        "title": "Claude Code KaTeX: Enable LaTeX Rendering"
+        "title": "Claude Code LaTeX: Enable"
       },
       {
         "command": "claude-code-katex.disable",
-        "title": "Claude Code KaTeX: Disable LaTeX Rendering"
+        "title": "Claude Code LaTeX: Disable"
       },
       {
         "command": "claude-code-katex.status",
-        "title": "Claude Code KaTeX: Check Status"
+        "title": "Claude Code LaTeX: Status"
       }
     ]
   },

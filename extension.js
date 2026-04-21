@@ -461,13 +461,13 @@ function activate(context) {
         applyPatch(extDir, vendorDir);
         // Always prompt reload when we patch on startup, because the webview
         // already loaded the unpatched files before this extension activated.
-        promptReload('Claude Code KaTeX: LaTeX rendering patch applied. Reload to activate.');
+        promptReload('Claude Code LaTeX: LaTeX rendering patch applied. Reload to activate.');
       } catch (e) {
-        console.error('[Claude Code KaTeX] Auto-patch failed:', e);
+        console.error('[Claude Code LaTeX] Auto-patch failed:', e);
       }
     }
   } else {
-    console.warn('[Claude Code KaTeX] Claude Code extension not found.');
+    console.warn('[Claude Code LaTeX] Claude Code extension not found.');
   }
 
   // Enable command
@@ -522,7 +522,7 @@ function activate(context) {
       }
       const patched = isPatched(dir);
       vscode.window.showInformationMessage(
-        'Claude Code KaTeX: ' + (patched ? 'Active' : 'Not active') +
+        'Claude Code LaTeX: ' + (patched ? 'Active' : 'Not active') +
         '\nExtension: ' + dir
       );
     })
@@ -537,7 +537,7 @@ function activate(context) {
           applyPatch(dir, vendorDir);
           promptReload('Claude Code was updated. KaTeX patch re-applied. Reload to activate.');
         } catch (e) {
-          console.error('[Claude Code KaTeX] Re-patch after update failed:', e);
+          console.error('[Claude Code LaTeX] Re-patch after update failed:', e);
         }
       }
     })

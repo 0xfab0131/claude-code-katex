@@ -438,7 +438,7 @@ describe('activate', () => {
     mockGetExtension.mockReturnValue({ extensionPath: extDir });
     activate(context);
     expect(mockShowInformationMessage).toHaveBeenCalledWith(
-      'Claude Code KaTeX: LaTeX rendering patch applied. Reload to activate.',
+      'Claude Code LaTeX: LaTeX rendering patch applied. Reload to activate.',
       'Reload Window'
     );
   });
@@ -871,7 +871,7 @@ describe('edge cases', () => {
     expect(isPatched(extDir)).toBe(true);
     // Must prompt reload (the v1.4.1 bug was that it didn't prompt here)
     expect(mockShowInformationMessage).toHaveBeenCalledWith(
-      'Claude Code KaTeX: LaTeX rendering patch applied. Reload to activate.',
+      'Claude Code LaTeX: LaTeX rendering patch applied. Reload to activate.',
       'Reload Window'
     );
   });
