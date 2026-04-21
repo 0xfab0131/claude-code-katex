@@ -1,5 +1,10 @@
 # Changelog
 
+## [1.7.6] - 2026-04-21
+
+### Changed
+- README updated to match "Claude Code LaTeX" naming (marketplace page).
+
 ## [1.7.5] - 2026-04-21
 
 ### Fixed
