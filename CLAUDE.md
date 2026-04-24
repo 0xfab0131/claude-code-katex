@@ -1,8 +1,11 @@
-# Claude Code KaTeX Extension
+# Claude Code LaTeX Extension
 
 ## Architecture
 
 This extension patches Claude Code's webview to add LaTeX rendering via KaTeX.
+
+(Note: display name is "Claude Code LaTeX" but the extension ID and repo name
+are still `claude-code-katex` for marketplace continuity.)
 
 **How Claude Code renders chat messages:**
 - Uses `react-markdown` (remark/micromark), NOT `marked`
@@ -18,10 +21,13 @@ This extension patches Claude Code's webview to add LaTeX rendering via KaTeX.
 
 ## Before changing the webview patch
 
-Always verify assumptions against the actual compiled Claude Code webview code at:
+Always verify assumptions against the actual compiled Claude Code webview code.
+
+**On Lightning studios, the path that matters is:**
 ```
-~/.vscode-server/extensions/anthropic.claude-code-*/webview/index.js
+~/.local/share/code-server/extensions/anthropic.claude-code-*/webview/index.js
 ```
+**NOT** `~/.vscode-server/extensions/...` (that's a symlink to a separate copy code-server does not load from). Patching the wrong one is the #1 time sink.
 
 Claude Code updates frequently and the internal structure can change. Grep the actual bundle to confirm:
 - How markdown is rendered (which library, which plugins)
@@ -32,8 +38,9 @@ Do not rely on memory or assumptions about the internals. Read the code.
 
 ## Testing
 
-- `npm test` runs 69 Jest tests for the extension logic
-- DOM behavior tests should use jsdom to simulate react-markdown output (text split across `<em>` tags, `<a>` tags with handlers, etc.)
+- `node_modules/.bin/jest` runs 73 Jest unit tests (top-level `npm test` sometimes fails with path issues — call the binary directly)
+- `node_modules/.bin/playwright test test-ui/ui.spec.js --project=chromium` runs 39 UI tests against a synthetic harness
+- **Real E2E** against actual Claude Code + real streaming auth is in `test-ui/verify-fix.js` — see full playbook at `~/.claude/projects/-teamspace-studios-this-studio/memory/vscode-webview-e2e-testing.md` for the checklist of gotchas (webview caching, two extension paths, marker strings, happy-path traps). Read it before doing any hands-on debugging.
 - After packaging, install locally and test with actual LaTeX in Claude Code chat
 
 ## Packaging
