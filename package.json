@@ -54,7 +54,8 @@
   },
   "scripts": {
     "test": "jest",
-    "test:ui": "npx playwright test",
+    "test:ui": "npm run build:react-harness && npx playwright test",
+    "build:react-harness": "esbuild test-ui/react-harness-entry.js --bundle --outfile=test-ui/react-harness-bundle.js --format=iife --target=es2020 --define:process.env.NODE_ENV='\"production\"'",
     "vscode:uninstall": "node ./uninstall-hook.js"
   },
   "extensionDependencies": [
@@ -73,7 +74,12 @@
   },
   "devDependencies": {
     "@playwright/test": "^1.58.2",
+    "esbuild": "^0.25.0",
     "jest": "^30.3.0",
-    "jsdom": "^29.0.1"
+    "jsdom": "^29.0.1",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-markdown": "^9.0.1",
+    "remark-gfm": "^4.0.0"
   }
 }
