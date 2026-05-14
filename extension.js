@@ -436,6 +436,22 @@ function getMutationObserverScript() {
     startObserving();
   }
 
+  // Manual re-render trigger: Ctrl+Alt+M.  Calls renderMath() on the active
+  // messagesContainer.  Workaround for issue #6 — if streaming ever leaves
+  // a message in a stuck \"raw \\$...\" state, this re-runs the same render
+  // pass the debounced observer would have done.
+  document.addEventListener('keydown', function(e) {
+    if (e.ctrlKey && e.altKey && !e.shiftKey && !e.metaKey && e.code === 'KeyM') {
+      e.preventDefault();
+      e.stopPropagation();
+      renderMath();
+    }
+  }, true);
+
+  // Also expose for programmatic triggers (DevTools, status bar action via
+  // a message bus down the road, etc.).
+  try { window.__claudeCodeKatexRerender = renderMath; } catch (_) {}
+
   console.log('[KaTeX Patch] LaTeX rendering enabled');
 })();`;
 }
@@ -528,6 +544,55 @@ function activate(context) {
     })
   );
 
+  // Manual re-render command.  The injected webview script handles the
+  // Ctrl+Alt+M shortcut directly (calls renderMath() in-place).  This
+  // palette command is for users who don't know the shortcut: it surfaces
+  // the shortcut and offers two heavier fallbacks (reload webview, reload
+  // window) because the extension host cannot reach into Claude Code's
+  // webview to invoke renderMath() directly.
+  context.subscriptions.push(
+    vscode.commands.registerCommand('claude-code-katex.rerender', function() {
+      vscode.window.showInformationMessage(
+        'Math not rendering? Press Ctrl+Alt+M inside the Claude Code chat to re-render. If math is still stuck, reload the webview or the window.',
+        'Reload Webview',
+        'Reload Window'
+      ).then(function(choice) {
+        if (choice === 'Reload Webview') {
+          vscode.commands.executeCommand('workbench.action.webview.reloadWebviewAction');
+        } else if (choice === 'Reload Window') {
+          vscode.commands.executeCommand('workbench.action.reloadWindow');
+        }
+      });
+    })
+  );
+
+  // Status bar indicator.  Always visible — text reflects whether the
+  // patch is active.  Click runs the rerender command — a single
+  // discoverable surface for "the extension is on" + "fix math if stuck".
+  const statusBarItem = vscode.window.createStatusBarItem(
+    vscode.StatusBarAlignment.Right,
+    100
+  );
+  statusBarItem.command = 'claude-code-katex.rerender';
+  function refreshStatusBar() {
+    const dir = findClaudeCodeExtDir();
+    if (dir && isPatched(dir)) {
+      statusBarItem.text = '$(symbol-operator) LaTeX';
+      statusBarItem.tooltip =
+        'Claude Code LaTeX is active. Click to re-render math (or press Ctrl+Alt+M inside the chat).';
+    } else if (dir) {
+      statusBarItem.text = '$(symbol-operator) LaTeX (off)';
+      statusBarItem.tooltip =
+        'Claude Code LaTeX is not patched. Run "Claude Code LaTeX: Enable" or reload after install.';
+    } else {
+      statusBarItem.text = '$(symbol-operator) LaTeX (no CC)';
+      statusBarItem.tooltip = 'Claude Code extension not found.';
+    }
+  }
+  refreshStatusBar();
+  statusBarItem.show();
+  context.subscriptions.push(statusBarItem);
+
   // Watch for Claude Code extension changes (updates)
   context.subscriptions.push(
     vscode.extensions.onDidChange(function() {
@@ -540,6 +605,7 @@ function activate(context) {
           console.error('[Claude Code LaTeX] Re-patch after update failed:', e);
         }
       }
+      refreshStatusBar();
     })
   );
 }

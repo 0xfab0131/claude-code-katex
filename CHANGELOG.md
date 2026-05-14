@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.8.0] - 2026-05-14
+
+### Added
+- Manual re-render trigger for issue #6 ("Math expressions sometimes remain as raw `$...$` during streaming until the window is reloaded"):
+  - **Keyboard shortcut `Ctrl+Alt+M`** inside the Claude Code chat re-runs the render pass on the active message container.
+  - **Command palette entry** "Claude Code LaTeX: Re-render Math" surfaces the shortcut and offers "Reload Webview" / "Reload Window" as heavier fallbacks.
+  - **Status bar indicator** ("$(symbol-operator) LaTeX") always visible when Claude Code is patched. Clicking it triggers the rerender command.
+  - `window.__claudeCodeKatexRerender` bridge exposed inside the webview for programmatic re-renders.
+
 ## [1.7.6] - 2026-04-21
 
 ### Changed

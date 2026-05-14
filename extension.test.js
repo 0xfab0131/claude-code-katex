@@ -9,11 +9,21 @@ const mockExecuteCommand = jest.fn();
 const mockRegisterCommand = jest.fn().mockReturnValue({ dispose: jest.fn() });
 const mockOnDidChange = jest.fn().mockReturnValue({ dispose: jest.fn() });
 const mockGetExtension = jest.fn();
+const mockStatusBarItem = {
+  text: '',
+  tooltip: '',
+  command: '',
+  show: jest.fn(),
+  hide: jest.fn(),
+  dispose: jest.fn(),
+};
+const mockCreateStatusBarItem = jest.fn().mockReturnValue(mockStatusBarItem);
 
 jest.mock('vscode', () => ({
   window: {
     showInformationMessage: mockShowInformationMessage,
     showErrorMessage: mockShowErrorMessage,
+    createStatusBarItem: mockCreateStatusBarItem,
   },
   commands: {
     registerCommand: mockRegisterCommand,
@@ -23,6 +33,7 @@ jest.mock('vscode', () => ({
     getExtension: mockGetExtension,
     onDidChange: mockOnDidChange,
   },
+  StatusBarAlignment: { Left: 1, Right: 2 },
 }), { virtual: true });
 
 const { activate, deactivate, _test } = require('./extension');
@@ -456,20 +467,36 @@ describe('activate', () => {
     );
   });
 
-  test('registers 3 commands', () => {
+  test('registers 4 commands', () => {
     mockGetExtension.mockReturnValue({ extensionPath: extDir });
     activate(context);
     const registeredCommands = mockRegisterCommand.mock.calls.map(c => c[0]);
     expect(registeredCommands).toContain('claude-code-katex.enable');
     expect(registeredCommands).toContain('claude-code-katex.disable');
     expect(registeredCommands).toContain('claude-code-katex.status');
+    expect(registeredCommands).toContain('claude-code-katex.rerender');
+  });
+
+  test('creates and shows the status bar item with the rerender command', () => {
+    mockGetExtension.mockReturnValue({ extensionPath: extDir });
+    mockCreateStatusBarItem.mockClear();
+    mockStatusBarItem.show.mockClear();
+    activate(context);
+    expect(mockCreateStatusBarItem).toHaveBeenCalledWith(
+      2 /* StatusBarAlignment.Right */,
+      100
+    );
+    expect(mockStatusBarItem.show).toHaveBeenCalled();
+    expect(mockStatusBarItem.command).toBe('claude-code-katex.rerender');
+    expect(mockStatusBarItem.text).toMatch(/LaTeX/);
   });
 
   test('pushes disposables to context.subscriptions', () => {
     mockGetExtension.mockReturnValue({ extensionPath: extDir });
     activate(context);
-    // 3 commands + 1 onDidChange = 4 subscriptions
-    expect(context.subscriptions.length).toBe(4);
+    // 4 commands (enable, disable, status, rerender) + 1 statusBarItem +
+    // 1 onDidChange = 6 subscriptions
+    expect(context.subscriptions.length).toBe(6);
   });
 
   test('registers onDidChange watcher', () => {
