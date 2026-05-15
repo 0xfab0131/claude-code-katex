@@ -1,5 +1,10 @@
 # Changelog
 
+## [1.10.0] - 2026-05-15
+
+### Fixed
+- Updating the extension now refreshes the code injected into Claude Code's webview. Previously the patch was version-agnostic, so an extension update kept the old injected code in place until Claude Code itself next updated. The patch now carries a version stamp; on activation a newer build detects an older or unstamped patch, restores the original webview files from backup, and re-applies the current patch. The refresh is guarded so it can never produce a double patch.
+
 ## [1.9.0] - 2026-05-15
 
 ### Changed

@@ -73,6 +73,21 @@ function setupFakeVendorDir() {
   return vendorDir;
 }
 
+// Rewrites the version stamp inside an already-applied patch to simulate a
+// patch left behind by a different extension build. `fakeVersion === null`
+// strips the stamp entirely, simulating a pre-versioning (<= 1.9.0) patch.
+function makeStalePatch(fakeVersion) {
+  const jsPath = path.join(extDir, 'webview', 'index.js');
+  const stamp = _test.PATCH_VERSION_PREFIX + _test.EXTENSION_VERSION + ' */';
+  let js = fs.readFileSync(jsPath, 'utf8');
+  if (fakeVersion === null) {
+    js = js.replace(stamp + '\n', '');
+  } else {
+    js = js.replace(stamp, _test.PATCH_VERSION_PREFIX + fakeVersion + ' */');
+  }
+  fs.writeFileSync(jsPath, js);
+}
+
 beforeEach(() => {
   tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'katex-test-'));
   jest.clearAllMocks();
@@ -427,6 +442,165 @@ describe('getMutationObserverScript', () => {
 // ============================================================
 // activate
 // ============================================================
+// ============================================================
+// getPatchedVersion
+// ============================================================
+describe('getPatchedVersion', () => {
+  const { getPatchedVersion } = _test;
+
+  beforeEach(() => {
+    setupFakeClaudeCodeExt();
+    setupFakeVendorDir();
+  });
+
+  test('returns null when the webview is unpatched', () => {
+    expect(getPatchedVersion(extDir)).toBeNull();
+  });
+
+  test('returns this extension version after applyPatch', () => {
+    applyPatch(extDir, vendorDir);
+    expect(getPatchedVersion(extDir)).toBe(_test.EXTENSION_VERSION);
+  });
+
+  test('returns null for a patch with no version stamp (<= 1.9.0 build)', () => {
+    applyPatch(extDir, vendorDir);
+    makeStalePatch(null); // strip the stamp line
+    expect(isPatched(extDir)).toBe(true); // still patched...
+    expect(getPatchedVersion(extDir)).toBeNull(); // ...but version unknown
+  });
+
+  test('returns null when index.js cannot be read', () => {
+    expect(getPatchedVersion(path.join(tmpDir, 'no-such-dir'))).toBeNull();
+  });
+});
+
+// ============================================================
+// canRestoreOriginals
+// ============================================================
+describe('canRestoreOriginals', () => {
+  const { canRestoreOriginals } = _test;
+
+  beforeEach(() => {
+    setupFakeClaudeCodeExt();
+    setupFakeVendorDir();
+  });
+
+  test('true when backups exist and are clean originals', () => {
+    applyPatch(extDir, vendorDir);
+    expect(canRestoreOriginals(extDir)).toBe(true);
+  });
+
+  test('false when a backup file is missing', () => {
+    applyPatch(extDir, vendorDir);
+    fs.unlinkSync(path.join(extDir, 'webview', 'index.js.katex-bak'));
+    expect(canRestoreOriginals(extDir)).toBe(false);
+  });
+
+  test('false when the JS backup is itself patched', () => {
+    applyPatch(extDir, vendorDir);
+    fs.writeFileSync(
+      path.join(extDir, 'webview', 'index.js.katex-bak'),
+      'junk ' + PATCH_MARKER + ' junk'
+    );
+    expect(canRestoreOriginals(extDir)).toBe(false);
+  });
+
+  test('false when the CSS backup is itself patched', () => {
+    applyPatch(extDir, vendorDir);
+    fs.writeFileSync(
+      path.join(extDir, 'webview', 'index.css.katex-bak'),
+      'junk ' + PATCH_CSS_MARKER + ' junk'
+    );
+    expect(canRestoreOriginals(extDir)).toBe(false);
+  });
+});
+
+// ============================================================
+// ensurePatched
+// ============================================================
+describe('ensurePatched', () => {
+  const { ensurePatched, getPatchedVersion } = _test;
+
+  beforeEach(() => {
+    setupFakeClaudeCodeExt();
+    setupFakeVendorDir();
+  });
+
+  function patchMarkerCount() {
+    const js = fs.readFileSync(path.join(extDir, 'webview', 'index.js'), 'utf8');
+    return js.split(PATCH_MARKER).length - 1;
+  }
+
+  test('"fresh" when unpatched: applies the patch', () => {
+    expect(ensurePatched(extDir, vendorDir)).toBe('fresh');
+    expect(isPatched(extDir)).toBe(true);
+    expect(getPatchedVersion(extDir)).toBe(_test.EXTENSION_VERSION);
+  });
+
+  test('"current" when already patched with this version: file unchanged', () => {
+    applyPatch(extDir, vendorDir);
+    const before = fs.readFileSync(path.join(extDir, 'webview', 'index.js'));
+    expect(ensurePatched(extDir, vendorDir)).toBe('current');
+    const after = fs.readFileSync(path.join(extDir, 'webview', 'index.js'));
+    expect(after.equals(before)).toBe(true);
+  });
+
+  test('"refreshed" for an older-version patch: restores then re-patches once', () => {
+    applyPatch(extDir, vendorDir);
+    makeStalePatch('0.0.1');
+    expect(getPatchedVersion(extDir)).toBe('0.0.1');
+
+    expect(ensurePatched(extDir, vendorDir)).toBe('refreshed');
+
+    expect(getPatchedVersion(extDir)).toBe(_test.EXTENSION_VERSION);
+    expect(patchMarkerCount()).toBe(1); // never doubled
+  });
+
+  test('"refreshed" for a pre-versioning patch with no stamp', () => {
+    applyPatch(extDir, vendorDir);
+    makeStalePatch(null);
+    expect(getPatchedVersion(extDir)).toBeNull();
+
+    expect(ensurePatched(extDir, vendorDir)).toBe('refreshed');
+
+    expect(getPatchedVersion(extDir)).toBe(_test.EXTENSION_VERSION);
+    expect(patchMarkerCount()).toBe(1);
+  });
+
+  test('"skipped" when stale but a backup is missing: patch left untouched', () => {
+    applyPatch(extDir, vendorDir);
+    makeStalePatch('0.0.1');
+    fs.unlinkSync(path.join(extDir, 'webview', 'index.js.katex-bak'));
+    const before = fs.readFileSync(path.join(extDir, 'webview', 'index.js'));
+
+    expect(ensurePatched(extDir, vendorDir)).toBe('skipped');
+
+    const after = fs.readFileSync(path.join(extDir, 'webview', 'index.js'));
+    expect(after.equals(before)).toBe(true);
+    expect(patchMarkerCount()).toBe(1); // not doubled
+  });
+
+  test('"skipped" when stale but a backup is itself patched', () => {
+    applyPatch(extDir, vendorDir);
+    makeStalePatch('0.0.1');
+    fs.writeFileSync(
+      path.join(extDir, 'webview', 'index.js.katex-bak'),
+      'poisoned ' + PATCH_MARKER
+    );
+
+    expect(ensurePatched(extDir, vendorDir)).toBe('skipped');
+    expect(patchMarkerCount()).toBe(1);
+  });
+
+  test('refresh is idempotent: a second call reports "current", still one patch', () => {
+    applyPatch(extDir, vendorDir);
+    makeStalePatch('0.0.1');
+    expect(ensurePatched(extDir, vendorDir)).toBe('refreshed');
+    expect(ensurePatched(extDir, vendorDir)).toBe('current');
+    expect(patchMarkerCount()).toBe(1);
+  });
+});
+
 describe('activate', () => {
   let context;
 
@@ -471,6 +645,29 @@ describe('activate', () => {
     );
     expect(mockShowInformationMessage).not.toHaveBeenCalledWith(
       expect.stringContaining('The webview was reloaded'),
+      'Reload Webview',
+      'Reload Window'
+    );
+  });
+
+  test('refreshes a stale patch on activation and notifies', () => {
+    mockGetExtension.mockReturnValue({ extensionPath: extDir });
+    // Simulate a webview still carrying an older extension build's patch.
+    applyPatch(extDir, vendorDir);
+    makeStalePatch('0.0.1');
+    mockShowInformationMessage.mockClear();
+    mockExecuteCommand.mockClear();
+
+    activate(context);
+
+    // Re-patched with the current version, exactly once.
+    expect(_test.getPatchedVersion(extDir)).toBe(_test.EXTENSION_VERSION);
+    // Reloaded + notified with the "updated" message.
+    expect(mockExecuteCommand).toHaveBeenCalledWith(
+      'workbench.action.webview.reloadWebviewAction'
+    );
+    expect(mockShowInformationMessage).toHaveBeenCalledWith(
+      'Claude Code LaTeX updated. The webview was reloaded; reload again if any math still looks unrendered.',
       'Reload Webview',
       'Reload Window'
     );

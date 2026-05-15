@@ -5,6 +5,14 @@ const path = require('path');
 const PATCH_MARKER = '/* === KaTeX LaTeX Rendering Patch === */';
 const PATCH_CSS_MARKER = '/* === KaTeX LaTeX Rendering CSS Patch === */';
 
+// This extension's own version. It is stamped into the patch (right after
+// PATCH_MARKER) so a newer build can recognize "patched, but by an older
+// build" and refresh the injected code instead of leaving it stale.
+const EXTENSION_VERSION = require('./package.json').version;
+// Version-agnostic prefix of the stamp line: `/* katex-ext-version: X.Y.Z */`.
+// Patches from builds <= 1.9.0 have no stamp at all (getPatchedVersion -> null).
+const PATCH_VERSION_PREFIX = '/* katex-ext-version: ';
+
 function findClaudeCodeExtDir() {
   const ext = vscode.extensions.getExtension('anthropic.claude-code');
   if (ext) {
@@ -19,6 +27,23 @@ function isPatched(extDir) {
     return js.includes(PATCH_MARKER);
   } catch {
     return false;
+  }
+}
+
+// Reads the extension version stamped into the patch. Returns the version
+// string, or null when the webview is unpatched or carries a patch from a
+// pre-versioning build (<= 1.9.0, which wrote no stamp).
+function getPatchedVersion(extDir) {
+  try {
+    const js = fs.readFileSync(path.join(extDir, 'webview', 'index.js'), 'utf8');
+    const start = js.indexOf(PATCH_VERSION_PREFIX);
+    if (start === -1) return null;
+    const rest = js.slice(start + PATCH_VERSION_PREFIX.length);
+    const end = rest.indexOf(' */');
+    if (end === -1) return null;
+    return rest.slice(0, end).trim();
+  } catch {
+    return null;
   }
 }
 
@@ -51,6 +76,7 @@ function applyPatch(extDir, vendorDir) {
 
   const jsPatch = `
 ${PATCH_MARKER}
+${PATCH_VERSION_PREFIX}${EXTENSION_VERSION} */
 /* KaTeX Core - MIT License - https://katex.org */
 ${katexCore}
 /* KaTeX Auto-Render Extension */
@@ -102,6 +128,55 @@ function removePatch(extDir) {
   }
 
   return restored;
+}
+
+// True only when the `.katex-bak` originals exist AND are themselves unpatched,
+// so removePatch() would restore genuine pristine files. This guards the
+// refresh path in ensurePatched(): we never append a second patch, and never
+// treat an already-patched file as if it were the backup-able original.
+function canRestoreOriginals(extDir) {
+  const webviewDir = path.join(extDir, 'webview');
+  const jsBak = path.join(webviewDir, 'index.js.katex-bak');
+  const cssBak = path.join(webviewDir, 'index.css.katex-bak');
+  try {
+    if (!fs.existsSync(jsBak) || !fs.existsSync(cssBak)) return false;
+    if (fs.readFileSync(jsBak, 'utf8').includes(PATCH_MARKER)) return false;
+    if (fs.readFileSync(cssBak, 'utf8').includes(PATCH_CSS_MARKER)) return false;
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+// Ensures Claude Code's webview carries THIS build's patch. Returns:
+//   'fresh'     - was unpatched; patch applied
+//   'refreshed' - carried an older/unstamped patch; originals restored, re-patched
+//   'current'   - already patched with this exact version; nothing done
+//   'skipped'   - patch is stale but cannot be refreshed safely; left untouched
+// May throw on filesystem errors from applyPatch/removePatch; callers handle.
+function ensurePatched(extDir, vendorDir) {
+  if (!isPatched(extDir)) {
+    applyPatch(extDir, vendorDir);
+    return 'fresh';
+  }
+  if (getPatchedVersion(extDir) === EXTENSION_VERSION) {
+    return 'current';
+  }
+  // A patch from an older (or pre-versioning) build is present. Refresh it so
+  // the injected code matches this build. applyPatch only ever APPENDS, so we
+  // must restore the pristine originals first — and only if that is safe.
+  if (!canRestoreOriginals(extDir)) {
+    console.warn('[Claude Code LaTeX] Webview carries a stale patch but the original backup is missing or invalid; leaving the existing patch in place.');
+    return 'skipped';
+  }
+  removePatch(extDir);
+  if (isPatched(extDir)) {
+    // Restore did not produce a clean file — refuse to append a second patch.
+    console.error('[Claude Code LaTeX] Restore did not clear the old patch; not re-applying, to avoid a double patch.');
+    return 'skipped';
+  }
+  applyPatch(extDir, vendorDir);
+  return 'refreshed';
 }
 
 function getMutationObserverScript() {
@@ -482,15 +557,18 @@ function activate(context) {
   // the patched version (Claude Code's webview loads before this extension).
   const extDir = findClaudeCodeExtDir();
   if (extDir) {
-    if (!isPatched(extDir)) {
-      try {
-        applyPatch(extDir, vendorDir);
-        // The webview already loaded the unpatched files before this extension
-        // activated, so reload it to re-fetch the now-patched bundle.
+    try {
+      // Patch if unpatched, or refresh if a previous extension version's patch
+      // is still in place. The webview already loaded the (un)patched files
+      // before this extension activated, so reload it to pick up the change.
+      const result = ensurePatched(extDir, vendorDir);
+      if (result === 'fresh') {
         reloadWebviewAndNotify('Claude Code LaTeX enabled. The webview was reloaded; reload again if any math still looks unrendered.');
-      } catch (e) {
-        console.error('[Claude Code LaTeX] Auto-patch failed:', e);
+      } else if (result === 'refreshed') {
+        reloadWebviewAndNotify('Claude Code LaTeX updated. The webview was reloaded; reload again if any math still looks unrendered.');
       }
+    } catch (e) {
+      console.error('[Claude Code LaTeX] Auto-patch failed:', e);
     }
   } else {
     console.warn('[Claude Code LaTeX] Claude Code extension not found.');
@@ -607,10 +685,14 @@ function activate(context) {
   context.subscriptions.push(
     vscode.extensions.onDidChange(function() {
       const dir = findClaudeCodeExtDir();
-      if (dir && !isPatched(dir)) {
+      if (dir) {
         try {
-          applyPatch(dir, vendorDir);
-          reloadWebviewAndNotify('Claude Code LaTeX re-applied after a Claude Code update. The webview was reloaded; reload again if any math still looks unrendered.');
+          // A Claude Code update installs a fresh (unpatched) webview; this
+          // re-patches it. It also refreshes a stale patch if one is present.
+          const result = ensurePatched(dir, vendorDir);
+          if (result === 'fresh' || result === 'refreshed') {
+            reloadWebviewAndNotify('Claude Code LaTeX re-applied after a Claude Code update. The webview was reloaded; reload again if any math still looks unrendered.');
+          }
         } catch (e) {
           console.error('[Claude Code LaTeX] Re-patch after update failed:', e);
         }
@@ -632,10 +714,15 @@ module.exports = { activate, deactivate };
 module.exports._test = {
   findClaudeCodeExtDir,
   isPatched,
+  getPatchedVersion,
+  canRestoreOriginals,
   applyPatch,
   removePatch,
+  ensurePatched,
   getMutationObserverScript,
   reloadWebviewAndNotify,
+  EXTENSION_VERSION,
   PATCH_MARKER,
   PATCH_CSS_MARKER,
+  PATCH_VERSION_PREFIX,
 };
