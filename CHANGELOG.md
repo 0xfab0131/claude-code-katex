@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.9.0] - 2026-05-15
+
+### Changed
+- The webview now reloads automatically when the patch is applied or removed (on startup, Enable, Disable, or after a Claude Code update). LaTeX rendering starts or stops without any manual reload.
+- The confirmation notification keeps "Reload Webview" and "Reload Window" buttons as fallbacks, for the rare case the automatic reload does not take effect.
+
 ## [1.8.0] - 2026-05-14
 
 ### Added

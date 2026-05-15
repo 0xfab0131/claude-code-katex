@@ -40,9 +40,9 @@ The extension patches Claude Code automatically on startup. If you need manual c
 
 ## How it works
 
-On activation, the extension appends KaTeX (core + auto-render + a MutationObserver) to Claude Code's webview files. A MutationObserver watches for new chat content and renders any LaTeX expressions it finds. Code blocks are ignored.
+On activation, the extension appends KaTeX (core + auto-render + a MutationObserver) to Claude Code's webview files, then reloads the webview so rendering takes effect immediately. A MutationObserver watches for new chat content and renders any LaTeX expressions it finds. Code blocks are ignored.
 
-When Claude Code updates, the patch is automatically re-applied.
+When Claude Code updates, the patch is automatically re-applied and the webview is reloaded.
 
 `extension.js` of Claude Code is **never modified**. Only the webview bundle (which runs in an isolated browser context) is patched, and originals are backed up.
 
@@ -50,7 +50,7 @@ When Claude Code updates, the patch is automatically re-applied.
 
 To **temporarily disable** LaTeX rendering, use the command:
 
-`Ctrl+Shift+P` → **Claude Code LaTeX: Disable** → reload when prompted.
+`Ctrl+Shift+P` → **Claude Code LaTeX: Disable**. The webview reloads automatically.
 
 To **re-enable**, use **Claude Code LaTeX: Enable**.
 
@@ -61,7 +61,6 @@ To **re-enable**, use **Claude Code LaTeX: Enable**.
 ## Known Limitations
 
 - **Backslash spacing commands** (`\,` `\;` `\!`) are stripped by Claude Code's markdown parser before this extension sees them. There is no workaround at this time.
-- After Claude Code updates, you may need to reload the window once for the re-patch to take effect.
 - There may be a brief flash of raw LaTeX during streaming responses (200ms debounce).
 - Code blocks are never affected. `$variable` inside `` `code` `` or code fences is left alone.
 - This is a temporary workaround until [anthropics/claude-code#16446](https://github.com/anthropics/claude-code/issues/16446) is resolved. Once Claude Code ships native LaTeX support, this extension can be uninstalled.

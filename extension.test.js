@@ -445,24 +445,33 @@ describe('activate', () => {
     expect(isPatched(extDir)).toBe(true);
   });
 
-  test('prompts reload after auto-patching', () => {
+  test('auto-reloads the webview and notifies after auto-patching', () => {
     mockGetExtension.mockReturnValue({ extensionPath: extDir });
     activate(context);
+    expect(mockExecuteCommand).toHaveBeenCalledWith(
+      'workbench.action.webview.reloadWebviewAction'
+    );
     expect(mockShowInformationMessage).toHaveBeenCalledWith(
-      'Claude Code LaTeX: LaTeX rendering patch applied. Reload to activate.',
+      'Claude Code LaTeX enabled. The webview was reloaded; reload again if any math still looks unrendered.',
+      'Reload Webview',
       'Reload Window'
     );
   });
 
-  test('does not re-patch if already patched', () => {
+  test('does not re-patch or reload if already patched', () => {
     mockGetExtension.mockReturnValue({ extensionPath: extDir });
     applyPatch(extDir, vendorDir);
     mockShowInformationMessage.mockClear();
+    mockExecuteCommand.mockClear();
 
     activate(context);
-    // Should NOT prompt reload since files are already patched
+    // Already patched: no re-patch, no webview reload, no notification
+    expect(mockExecuteCommand).not.toHaveBeenCalledWith(
+      'workbench.action.webview.reloadWebviewAction'
+    );
     expect(mockShowInformationMessage).not.toHaveBeenCalledWith(
-      expect.stringContaining('patch applied'),
+      expect.stringContaining('The webview was reloaded'),
+      'Reload Webview',
       'Reload Window'
     );
   });
@@ -530,20 +539,25 @@ describe('Enable command', () => {
     return mockRegisterCommand.mock.calls.find(c => c[0] === commandName)[1];
   }
 
-  test('patches and prompts reload when not patched', () => {
+  test('patches, reloads the webview, and notifies when not patched', () => {
     mockGetExtension.mockReturnValue({ extensionPath: extDir });
-    // Pre-patch so activate doesn't prompt, then remove patch
+    // Pre-patch so activate doesn't reload, then remove patch
     applyPatch(extDir, vendorDir);
     activate(context);
     removePatch(extDir);
     mockShowInformationMessage.mockClear();
+    mockExecuteCommand.mockClear();
 
     const enableHandler = getCommandHandler('claude-code-katex.enable');
     enableHandler();
 
     expect(isPatched(extDir)).toBe(true);
+    expect(mockExecuteCommand).toHaveBeenCalledWith(
+      'workbench.action.webview.reloadWebviewAction'
+    );
     expect(mockShowInformationMessage).toHaveBeenCalledWith(
-      'KaTeX patch applied. Reload to activate.',
+      'Claude Code LaTeX enabled. The webview was reloaded; reload again if any math still looks unrendered.',
+      'Reload Webview',
       'Reload Window'
     );
   });
@@ -590,18 +604,23 @@ describe('Disable command', () => {
     return mockRegisterCommand.mock.calls.find(c => c[0] === commandName)[1];
   }
 
-  test('removes patch and prompts reload when patched', () => {
+  test('removes patch, reloads the webview, and notifies when patched', () => {
     mockGetExtension.mockReturnValue({ extensionPath: extDir });
     applyPatch(extDir, vendorDir);
     activate(context);
     mockShowInformationMessage.mockClear();
+    mockExecuteCommand.mockClear();
 
     const disableHandler = getCommandHandler('claude-code-katex.disable');
     disableHandler();
 
     expect(isPatched(extDir)).toBe(false);
+    expect(mockExecuteCommand).toHaveBeenCalledWith(
+      'workbench.action.webview.reloadWebviewAction'
+    );
     expect(mockShowInformationMessage).toHaveBeenCalledWith(
-      'KaTeX patch removed. Reload to apply.',
+      'Claude Code LaTeX disabled. The webview was reloaded.',
+      'Reload Webview',
       'Reload Window'
     );
   });
@@ -713,11 +732,16 @@ describe('onDidChange (Claude Code update)', () => {
 
     // Trigger onDidChange
     const onDidChangeHandler = mockOnDidChange.mock.calls[0][0];
+    mockExecuteCommand.mockClear();
     onDidChangeHandler();
 
     expect(isPatched(extDir)).toBe(true);
+    expect(mockExecuteCommand).toHaveBeenCalledWith(
+      'workbench.action.webview.reloadWebviewAction'
+    );
     expect(mockShowInformationMessage).toHaveBeenCalledWith(
-      'Claude Code was updated. KaTeX patch re-applied. Reload to activate.',
+      'Claude Code LaTeX re-applied after a Claude Code update. The webview was reloaded; reload again if any math still looks unrendered.',
+      'Reload Webview',
       'Reload Window'
     );
   });
@@ -733,7 +757,53 @@ describe('onDidChange (Claude Code update)', () => {
     // Should not show re-patch message
     expect(mockShowInformationMessage).not.toHaveBeenCalledWith(
       expect.stringContaining('re-applied'),
+      'Reload Webview',
       'Reload Window'
+    );
+  });
+});
+
+// ============================================================
+// reloadWebviewAndNotify
+// ============================================================
+describe('reloadWebviewAndNotify', () => {
+  const { reloadWebviewAndNotify } = _test;
+
+  test('reloads the webview immediately', () => {
+    reloadWebviewAndNotify('hello');
+    expect(mockExecuteCommand).toHaveBeenCalledWith(
+      'workbench.action.webview.reloadWebviewAction'
+    );
+  });
+
+  test('shows the message with Reload Webview before Reload Window', () => {
+    reloadWebviewAndNotify('hello');
+    expect(mockShowInformationMessage).toHaveBeenCalledWith(
+      'hello',
+      'Reload Webview',
+      'Reload Window'
+    );
+  });
+
+  test('"Reload Webview" button reloads the webview again', async () => {
+    mockShowInformationMessage.mockResolvedValueOnce('Reload Webview');
+    reloadWebviewAndNotify('hello');
+    await Promise.resolve();
+    await Promise.resolve();
+    const reloads = mockExecuteCommand.mock.calls.filter(
+      (c) => c[0] === 'workbench.action.webview.reloadWebviewAction'
+    );
+    // once on invocation, once from the button
+    expect(reloads.length).toBe(2);
+  });
+
+  test('"Reload Window" button triggers a full window reload', async () => {
+    mockShowInformationMessage.mockResolvedValueOnce('Reload Window');
+    reloadWebviewAndNotify('hello');
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(mockExecuteCommand).toHaveBeenCalledWith(
+      'workbench.action.reloadWindow'
     );
   });
 });
@@ -896,9 +966,13 @@ describe('edge cases', () => {
 
     // Must re-patch
     expect(isPatched(extDir)).toBe(true);
-    // Must prompt reload (the v1.4.1 bug was that it didn't prompt here)
+    // Must reload + notify (the v1.4.1 bug was that it skipped this on re-patch)
+    expect(mockExecuteCommand).toHaveBeenCalledWith(
+      'workbench.action.webview.reloadWebviewAction'
+    );
     expect(mockShowInformationMessage).toHaveBeenCalledWith(
-      'Claude Code LaTeX: LaTeX rendering patch applied. Reload to activate.',
+      'Claude Code LaTeX enabled. The webview was reloaded; reload again if any math still looks unrendered.',
+      'Reload Webview',
       'Reload Window'
     );
   });

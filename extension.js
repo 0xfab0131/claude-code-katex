@@ -456,12 +456,22 @@ function getMutationObserverScript() {
 })();`;
 }
 
-function promptReload(message) {
-  vscode.window.showInformationMessage(message, 'Reload Window').then(function(choice) {
-    if (choice === 'Reload Window') {
-      vscode.commands.executeCommand('workbench.action.reloadWindow');
-    }
-  });
+// Reloads the Claude Code webview so an on-disk patch change takes effect
+// immediately. A webview reload re-fetches the patched bundle (validated on
+// real Claude Code); a full window reload is not required. The notification
+// keeps manual fallbacks for the rare case the auto-reload did not take:
+// "Reload Webview" to retry, "Reload Window" to escalate.
+function reloadWebviewAndNotify(message) {
+  vscode.commands.executeCommand('workbench.action.webview.reloadWebviewAction');
+  vscode.window
+    .showInformationMessage(message, 'Reload Webview', 'Reload Window')
+    .then(function(choice) {
+      if (choice === 'Reload Webview') {
+        vscode.commands.executeCommand('workbench.action.webview.reloadWebviewAction');
+      } else if (choice === 'Reload Window') {
+        vscode.commands.executeCommand('workbench.action.reloadWindow');
+      }
+    });
 }
 
 function activate(context) {
@@ -475,9 +485,9 @@ function activate(context) {
     if (!isPatched(extDir)) {
       try {
         applyPatch(extDir, vendorDir);
-        // Always prompt reload when we patch on startup, because the webview
-        // already loaded the unpatched files before this extension activated.
-        promptReload('Claude Code LaTeX: LaTeX rendering patch applied. Reload to activate.');
+        // The webview already loaded the unpatched files before this extension
+        // activated, so reload it to re-fetch the now-patched bundle.
+        reloadWebviewAndNotify('Claude Code LaTeX enabled. The webview was reloaded; reload again if any math still looks unrendered.');
       } catch (e) {
         console.error('[Claude Code LaTeX] Auto-patch failed:', e);
       }
@@ -500,7 +510,7 @@ function activate(context) {
       }
       try {
         applyPatch(dir, vendorDir);
-        promptReload('KaTeX patch applied. Reload to activate.');
+        reloadWebviewAndNotify('Claude Code LaTeX enabled. The webview was reloaded; reload again if any math still looks unrendered.');
       } catch (e) {
         vscode.window.showErrorMessage('Failed to apply patch: ' + e.message);
       }
@@ -521,7 +531,7 @@ function activate(context) {
       }
       try {
         removePatch(dir);
-        promptReload('KaTeX patch removed. Reload to apply.');
+        reloadWebviewAndNotify('Claude Code LaTeX disabled. The webview was reloaded.');
       } catch (e) {
         vscode.window.showErrorMessage('Failed to remove patch: ' + e.message);
       }
@@ -600,7 +610,7 @@ function activate(context) {
       if (dir && !isPatched(dir)) {
         try {
           applyPatch(dir, vendorDir);
-          promptReload('Claude Code was updated. KaTeX patch re-applied. Reload to activate.');
+          reloadWebviewAndNotify('Claude Code LaTeX re-applied after a Claude Code update. The webview was reloaded; reload again if any math still looks unrendered.');
         } catch (e) {
           console.error('[Claude Code LaTeX] Re-patch after update failed:', e);
         }
@@ -625,7 +635,7 @@ module.exports._test = {
   applyPatch,
   removePatch,
   getMutationObserverScript,
-  promptReload,
+  reloadWebviewAndNotify,
   PATCH_MARKER,
   PATCH_CSS_MARKER,
 };
