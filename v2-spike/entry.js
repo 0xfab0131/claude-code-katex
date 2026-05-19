@@ -37,12 +37,30 @@ function normalizeMathDelims(src) {
       continue;
     }
     if (inFence) continue;
-    lines[i] = lines[i]
+    let line = lines[i]
       // currency: a lone `$` immediately before a digit ($100, $5) is not math
       .replace(/(?<![$\\])\$(?!\$)(?=\d)/g, '\\$')
-      // \[ \] -> $$   (display);   \( \) -> $   (inline)
-      .replace(/\\\[/g, '$$$$').replace(/\\\]/g, '$$$$')
-      .replace(/\\\(/g, '$').replace(/\\\)/g, '$');
+      // \[ \] -> $$ (display); \( \) -> $ (inline). The (?<!\\) guard keeps
+      // amsmath row separators (`\\[6pt]`, `\\[1em]`, ...) from having their
+      // `[` consumed: without it, `\\[6pt]` becomes `\$$6pt]` and the math
+      // is destroyed.
+      .replace(/(?<!\\)\\\[/g, '$$$$').replace(/(?<!\\)\\\]/g, '$$$$')
+      .replace(/(?<!\\)\\\(/g, '$').replace(/(?<!\\)\\\)/g, '$');
+    // remark-math's display-math *flow* construct only recognizes `$$` when
+    // it is alone on its line. If a fence shares its line with content
+    // (`$$\begin{aligned}` or `\end{aligned}$$`), move the `$$` onto its own
+    // line so the block parses. A self-contained single-line `$$...$$` keeps
+    // a `$$` in the remainder, so it is left as inline display math.
+    let m = line.match(/^(\s*)\$\$(.+)$/);
+    if (m && m[2].trim() !== '' && m[2].indexOf('$$') === -1) {
+      line = m[1] + '$$\n' + m[1] + m[2];
+    } else {
+      m = line.match(/^(.+)\$\$\s*$/);
+      if (m && m[1].trim() !== '' && m[1].indexOf('$$') === -1) {
+        line = m[1] + '\n$$';
+      }
+    }
+    lines[i] = line;
   }
   return lines.join('\n');
 }

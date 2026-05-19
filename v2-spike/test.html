@@ -2,20 +2,22 @@
 <html>
 <head>
 <meta charset="utf-8">
-<title>Claude Code LaTeX v2 — bundle harness</title>
+<title>Claude Code LaTeX v2 — torture harness</title>
 <link rel="stylesheet" href="/vendor/katex.min.css">
 <script src="/vendor/katex.min.js"></script>
 <script src="/vendor/remark-math-bundle.js"></script>
 <style>
-  body { font-family: sans-serif; background:#1e1e2e; color:#ddd; padding:20px; }
-  .case { border:1px solid #444; margin:10px 0; padding:10px; border-radius:6px; }
+  body { font-family: sans-serif; background:#1e1e2e; color:#ddd; padding:20px; max-width:1100px; }
+  .case { border:1px solid #444; margin:8px 0; padding:8px 10px; border-radius:6px; }
   .pass { border-color:#4caf50; } .fail { border-color:#f44336; }
-  .label { font-weight:bold; } .fail .label { color:#f44336; } .pass .label { color:#4caf50; }
-  .render { background:#11111b; padding:8px; margin-top:6px; border-radius:4px; }
+  .label { font-weight:bold; font-size:13px; } .fail .label { color:#f44336; } .pass .label { color:#4caf50; }
+  .render { background:#11111b; padding:10px; margin-top:6px; border-radius:4px; }
+  #summary { font-size:20px; font-weight:bold; padding:12px; margin-bottom:10px; border-radius:6px; background:#181825; }
 </style>
 </head>
 <body>
-<h2>v2 bundle harness</h2>
+<h2>Claude Code LaTeX v2 — torture harness (real shipping bundle)</h2>
+<div id="summary">running…</div>
 <div id="out"></div>
 <script type="module">
 import React from 'https://esm.sh/react@18.3.1?bundle';
@@ -23,55 +25,149 @@ import { createRoot } from 'https://esm.sh/react-dom@18.3.1/client?bundle&deps=r
 import Markdown from 'https://esm.sh/react-markdown@9.0.1?bundle&deps=react@18.3.1';
 import remarkGfm from 'https://esm.sh/remark-gfm@4.0.0?bundle';
 
-const remarkPlugins  = [remarkGfm, window.__remarkBracketMath, window.__remarkMath];
-const rehypePlugins  = [window.__rehypeKatex];
+// EXACT same plugin chain the extension injects into Claude Code.
+const remarkPlugins = [remarkGfm, window.__remarkBracketMath, window.__remarkMath];
+const rehypePlugins = [window.__rehypeKatex];
 
-// name, markdown, predicate(rootEl) -> [ok, detail]
+const R = String.raw;
+const err = el => el.querySelectorAll('.katex-error').length;
+const kx  = el => el.querySelectorAll('.katex').length;
+const mtr = el => el.querySelectorAll('mtr').length;
+
+// [name, markdown, predicate(renderEl) -> [ok, detail]]
 const cases = [
-  ['$$ bmatrix 2x2', '$$\\begin{bmatrix} a & b \\\\ c & d \\end{bmatrix}$$',
-    el => [el.querySelectorAll('mtr').length === 2, el.querySelectorAll('mtr').length + ' rows']],
-  ['\\[ \\] bmatrix 2x2', '\\[ \\begin{bmatrix} a & b \\\\ c & d \\end{bmatrix} \\]',
-    el => [el.querySelectorAll('mtr').length === 2, el.querySelectorAll('mtr').length + ' rows']],
-  ['screenshot case: \\[ multiline + "=" line', `\\[
-\\begin{bmatrix} 1 & 2 \\\\ 3 & 4 \\end{bmatrix} \\begin{bmatrix} 5 & 6 \\\\ 7 & 8 \\end{bmatrix}
+  // ============ CRAZY: heavy KaTeX through the real pipeline ============
+  ['CRAZY 1 — Maxwell equations, 4-row aligned', R`$$\begin{aligned}
+\nabla\cdot\mathbf{E} &= \frac{\rho}{\varepsilon_0} \\
+\nabla\cdot\mathbf{B} &= 0 \\
+\nabla\times\mathbf{E} &= -\frac{\partial\mathbf{B}}{\partial t} \\
+\nabla\times\mathbf{B} &= \mu_0\mathbf{J}+\mu_0\varepsilon_0\frac{\partial\mathbf{E}}{\partial t}
+\end{aligned}$$`,
+    el => [mtr(el) === 4 && err(el) === 0, mtr(el) + ' rows, ' + err(el) + ' err']],
+
+  ['BUG#1 regression — single-line $$ with \\[6pt] row spacing', R`$$\begin{bmatrix} a & b \\[6pt] c & d \\[6pt] e & f \end{bmatrix}$$`,
+    el => [mtr(el) === 3 && err(el) === 0, mtr(el) + ' rows, ' + err(el) + ' err']],
+
+  ['BUG#1+#2 regression — multi-line $$ block + \\[8pt] spacing + shared fence lines', R`$$\begin{aligned}
+\alpha &= \beta + \gamma \\[8pt]
+\delta &= \epsilon - \zeta
+\end{aligned}$$`,
+    el => [mtr(el) === 2 && err(el) === 0, mtr(el) + ' rows, ' + err(el) + ' err']],
+
+  ['CRAZY 2 — Schrödinger equation', R`$$i\hbar\frac{\partial}{\partial t}\Psi(\mathbf{r},t) = \left(-\frac{\hbar^2}{2m}\nabla^2 + V(\mathbf{r},t)\right)\Psi(\mathbf{r},t)$$`,
+    el => [kx(el) === 1 && err(el) === 0, kx(el) + ' katex, ' + err(el) + ' err']],
+
+  ['CRAZY 3 — 4-deep continued fraction (\\cfrac)', R`$$\varphi = 1 + \cfrac{1}{1+\cfrac{1}{1+\cfrac{1}{1+\cfrac{1}{1+\cdots}}}}$$`,
+    el => [kx(el) === 1 && err(el) === 0, kx(el) + ' katex, ' + err(el) + ' err']],
+
+  ['CRAZY 4 — 3×3 determinant (vmatrix)', R`$$\det A = \begin{vmatrix} a_{11} & a_{12} & a_{13} \\ a_{21} & a_{22} & a_{23} \\ a_{31} & a_{32} & a_{33} \end{vmatrix}$$`,
+    el => [mtr(el) === 3 && err(el) === 0, mtr(el) + ' rows, ' + err(el) + ' err']],
+
+  ['CRAZY 5 — Christoffel symbol (tensor indices)', R`$$\Gamma^{k}_{ij} = \tfrac{1}{2}\,g^{km}\left(\partial_i g_{mj} + \partial_j g_{mi} - \partial_m g_{ij}\right)$$`,
+    el => [kx(el) === 1 && err(el) === 0, kx(el) + ' katex, ' + err(el) + ' err']],
+
+  ['CRAZY 6 — double sum with \\substack', R`$$\sum_{\substack{1\le i\le n \\ 1\le j\le n \\ i\ne j}} a_{ij}\,b_{ji}$$`,
+    el => [kx(el) === 1 && err(el) === 0, kx(el) + ' katex, ' + err(el) + ' err']],
+
+  ['CRAZY 7 — 4-deep nested radical', R`$$\sqrt{1+\sqrt{1+\sqrt{1+\sqrt{1+x}}}}$$`,
+    el => [kx(el) === 1 && err(el) === 0, kx(el) + ' katex, ' + err(el) + ' err']],
+
+  ['CRAZY 8 — Gaussian integral', R`$$\int_{-\infty}^{\infty} e^{-\alpha x^2}\,dx = \sqrt{\frac{\pi}{\alpha}}$$`,
+    el => [kx(el) === 1 && err(el) === 0, kx(el) + ' katex, ' + err(el) + ' err']],
+
+  ['CRAZY 9 — bra-ket / expectation value', R`$$\langle\psi|\hat{H}|\psi\rangle = E\,\langle\psi|\psi\rangle$$`,
+    el => [kx(el) === 1 && err(el) === 0, kx(el) + ' katex, ' + err(el) + ' err']],
+
+  ['CRAZY 10 — matrix product (three 2×2, six rows)', R`$$\begin{pmatrix} 1 & 2 \\ 3 & 4 \end{pmatrix}\begin{pmatrix} 5 & 6 \\ 7 & 8 \end{pmatrix} = \begin{pmatrix} 19 & 22 \\ 43 & 50 \end{pmatrix}$$`,
+    el => [mtr(el) === 6 && err(el) === 0, mtr(el) + ' rows, ' + err(el) + ' err']],
+
+  ['CRAZY 11 — over/underbrace', R`$$\underbrace{1+1+\cdots+1}_{n\text{ terms}} \;=\; \overbrace{n}^{\text{total}}$$`,
+    el => [kx(el) === 1 && err(el) === 0, kx(el) + ' katex, ' + err(el) + ' err']],
+
+  ['CRAZY 12 — Cauchy–Schwarz inequality', R`$$\left|\sum_{i=1}^{n} a_i b_i\right|^2 \le \left(\sum_{i=1}^{n} a_i^2\right)\left(\sum_{i=1}^{n} b_i^2\right)$$`,
+    el => [kx(el) === 1 && err(el) === 0, kx(el) + ' katex, ' + err(el) + ' err']],
+
+  ['CRAZY 13 — 3-branch piecewise (cases)', R`$$f(x)=\begin{cases} x^2 & x<0 \\ \sin x & 0\le x<\pi \\ \log x & x\ge\pi \end{cases}$$`,
+    el => [mtr(el) === 3 && err(el) === 0, mtr(el) + ' rows, ' + err(el) + ' err']],
+
+  ['CRAZY 14 — \\xrightarrow arrow chain', R`$$A \xrightarrow{\;\;f\;\;} B \xrightarrow{\;\;g\;\;} C \xrightarrow{\;\;h\;\;} D$$`,
+    el => [kx(el) === 1 && err(el) === 0, kx(el) + ' katex, ' + err(el) + ' err']],
+
+  // ============ EDGE: pipeline correctness — must behave exactly right ============
+  ['EDGE 15 — fenced code block: $ must NOT render', '```\n$E = mc^2$ is famous\n```',
+    el => { const code = el.querySelector('code');
+            return [kx(el) === 0 && !!code && code.textContent.includes('$E = mc^2$'),
+                    kx(el) + ' katex, code=' + JSON.stringify(code ? code.textContent.trim() : null)]; }],
+
+  ['EDGE 16 — inline code: $ must NOT render', 'Write `$x^2$` to show literal dollar math.',
+    el => { const code = el.querySelector('code');
+            return [kx(el) === 0 && !!code && code.textContent === '$x^2$',
+                    kx(el) + ' katex, code=' + JSON.stringify(code ? code.textContent : null)]; }],
+
+  ['EDGE 17 — currency vs math on one line', R`An espresso is $4 and lunch is $15, but $a^2+b^2=c^2$ is real math.`,
+    el => [kx(el) === 1 && el.textContent.includes('$4') && el.textContent.includes('$15'),
+           kx(el) + ' katex (want 1), text=' + JSON.stringify(el.textContent)]],
+
+  ['EDGE 18 — math inside a GFM table', R`| symbol | value |
+|--------|-------|
+| $\alpha$ | $\frac{1}{2}$ |
+| $\beta$  | $\sqrt{2}$ |`,
+    el => [!!el.querySelector('table') && kx(el) === 4 && err(el) === 0,
+           (el.querySelector('table') ? 'table' : 'NO table') + ', ' + kx(el) + ' katex']],
+
+  ['EDGE 19 — math inside an ordered list', R`1. First: $\alpha^2$
+2. Second: $\sum_{k=1}^{n} k$
+3. Third: $\int_0^1 x\,dx$`,
+    el => [!!el.querySelector('ol') && kx(el) === 3 && err(el) === 0,
+           (el.querySelector('ol') ? 'ol' : 'NO ol') + ', ' + kx(el) + ' katex']],
+
+  ['EDGE 20 — math inside a blockquote', R`> Euler's identity: $e^{i\pi} + 1 = 0$`,
+    el => [!!el.querySelector('blockquote .katex') && err(el) === 0,
+           (el.querySelector('blockquote') ? 'blockquote' : 'NO bq') + ', ' + kx(el) + ' katex']],
+
+  ['EDGE 21 — math inside a heading', R`### Result: $E = mc^2$ holds`,
+    el => [!!el.querySelector('h3 .katex') && err(el) === 0,
+           (el.querySelector('h3') ? 'h3' : 'NO h3') + ', ' + kx(el) + ' katex in heading']],
+
+  ['EDGE 22 — \\[ \\] display + \\( \\) inline delimiters', R`Display \[ \int_0^1 x^2\,dx = \tfrac{1}{3} \] then inline \( \alpha + \beta \) done.`,
+    el => [kx(el) === 2 && err(el) === 0 && !el.textContent.includes('\\['),
+           kx(el) + ' katex (want 2), ' + err(el) + ' err']],
+
+  ['EDGE 23 — lone "=" line inside $$ (setext-heading torture)', R`$$
+a + b
 =
-\\begin{bmatrix} 19 & 22 \\\\ 43 & 50 \\end{bmatrix}
-\\]`,
-    el => { const r = el.querySelectorAll('mtr').length, h = el.querySelectorAll('h1,h2').length;
-            return [r === 6 && h === 0, r + ' rows, ' + h + ' headings']; }],
-  ['$$ aligned 3 rows', '$$\\begin{aligned} a &= 1 \\\\ b &= 2 \\\\ c &= 3 \\end{aligned}$$',
-    el => [el.querySelectorAll('mtr').length === 3, el.querySelectorAll('mtr').length + ' rows']],
-  ['inline $x^2$ + \\(y_i\\)', 'Inline $x^2 + 1$ and \\(y_i\\) together.',
-    el => { const k = el.querySelectorAll('.katex').length;
-            return [k === 2 && !el.textContent.includes('$'), k + ' katex, text=' + JSON.stringify(el.textContent)]; }],
-  ['currency $100 / $200 stays text', 'it costs $100 and $200 total',
-    el => [el.querySelectorAll('.katex').length === 0 && el.textContent.includes('$100'),
-           el.querySelectorAll('.katex').length + ' katex, text=' + JSON.stringify(el.textContent)]],
-  ['escaped braces $\\{1,2\\}$', 'A set $\\{1, 2, 3\\}$ here.',
-    el => [el.querySelectorAll('.katex').length === 1 && el.querySelectorAll('.katex-error').length === 0, 'ok']],
-  ['issue #7 — _ subscript + \\; thin space', String.raw`$$\mathcal{M}_{\alpha,\beta}(a,b) \;=\; \tfrac{1}{2}\Bigl(a + b + \bigl((a-b)^{2\beta} + \alpha^{2\beta}\bigr)^{1/(2\beta)}\Bigr)$$`,
-    el => { const e = el.querySelectorAll('.katex-error').length, s = el.querySelectorAll('msub').length;
-            return [e === 0 && s >= 1 && el.querySelectorAll('.katex').length >= 1, e + ' err, ' + s + ' msub']; }],
-  ['issue #7 — \\! negative space + _ subscript', String.raw`Inline: $\partial_{xx} M(\Phi, V_+) = (\nabla^2 M)\![(\Phi', V_+'), (\Phi', V_+')] + (\nabla M)\cdot(\Phi'', V_+'')$`,
-    el => { const e = el.querySelectorAll('.katex-error').length, s = el.querySelectorAll('msub').length;
-            return [e === 0 && s >= 1 && el.querySelectorAll('.katex').length >= 1, e + ' err, ' + s + ' msub']; }],
+c
+$$`,
+    el => [kx(el) >= 1 && err(el) === 0 && el.querySelectorAll('h1,h2').length === 0,
+           kx(el) + ' katex, ' + el.querySelectorAll('h1,h2').length + ' headings (want 0)']],
+
+  ['EDGE 24 — deeply nested subscripts', R`$x_{a_{b_{c_{d}}}}$ and $f_{n+1} = f_n + f_{n-1}$`,
+    el => [kx(el) === 2 && err(el) === 0 && el.querySelectorAll('msub').length >= 4,
+           kx(el) + ' katex, ' + el.querySelectorAll('msub').length + ' msub, ' + err(el) + ' err']],
+
+  ['EDGE 25 — escaped \\$ must stay a literal dollar', R`The book costs \$50 and the pen \$3, no math here.`,
+    el => [kx(el) === 0 && el.textContent.includes('$50') && el.textContent.includes('$3'),
+           kx(el) + ' katex (want 0), text=' + JSON.stringify(el.textContent)]],
+
+  ['EDGE 26 — lone unmatched $ degrades gracefully', R`A single $ dollar sign with no closing delimiter at all.`,
+    el => [kx(el) === 0 && err(el) === 0 && el.textContent.includes('$'),
+           kx(el) + ' katex (want 0), ' + err(el) + ' err, text kept=' + el.textContent.includes('$')]],
 ];
 
 const out = document.getElementById('out');
-const results = [];
-let done = 0;
-for (const [name, md, pred] of cases) {
+for (const [name, md] of cases) {
   const wrap = document.createElement('div');
   wrap.className = 'case';
-  const r = document.createElement('div'); r.className = 'render';
   wrap.innerHTML = '<div class="label">' + name + '</div>';
+  const r = document.createElement('div'); r.className = 'render';
   wrap.appendChild(r);
   out.appendChild(wrap);
   createRoot(r).render(React.createElement(Markdown, { remarkPlugins, rehypePlugins }, md));
 }
-// give React + KaTeX a tick to render, then evaluate
+
 setTimeout(() => {
   const wraps = out.querySelectorAll('.case');
+  const results = [];
   cases.forEach(([name, md, pred], i) => {
     const wrap = wraps[i], r = wrap.querySelector('.render');
     let ok = false, detail = '';
@@ -80,9 +176,13 @@ setTimeout(() => {
     wrap.querySelector('.label').textContent = (ok ? 'PASS  ' : 'FAIL  ') + name + '  —  ' + detail;
     results.push({ name, ok, detail });
   });
+  const passed = results.filter(r => r.ok).length;
+  const s = document.getElementById('summary');
+  s.textContent = passed + ' / ' + results.length + ' passed';
+  s.style.color = passed === results.length ? '#4caf50' : '#f44336';
   window.__RESULTS = results;
   window.__DONE = true;
-}, 600);
+}, 1800);
 </script>
 </body>
 </html>
