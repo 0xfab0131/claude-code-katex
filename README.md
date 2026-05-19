@@ -6,7 +6,7 @@ Adds LaTeX math rendering to the [Claude Code](https://marketplace.visualstudio.
 
 Temporary workaround for [anthropics/claude-code#16446](https://github.com/anthropics/claude-code/issues/16446) until native LaTeX rendering is added.
 
-Renders `$...$` (inline) and `$$...$$` (display) math expressions in Claude's chat responses.
+Renders inline math (`$...$`, `\(...\)`) and display math (`$$...$$`, `\[...\]`) in Claude's chat responses — including matrices and multi-line environments like `aligned`, `cases`, and `bmatrix`.
 
 ## Demo
 
@@ -46,9 +46,9 @@ The extension patches Claude Code automatically on startup. If you need manual c
 
 ## How it works
 
-On activation, the extension appends KaTeX (core + auto-render + a MutationObserver) to Claude Code's webview files, then reloads the webview so rendering takes effect immediately. A MutationObserver watches for new chat content and renders any LaTeX expressions it finds. Code blocks are ignored.
+The extension injects `remark-math` and `rehype-katex` into Claude Code's own Markdown rendering pipeline. Math is tokenized *while* Claude Code parses the Markdown — before the parser can alter it — so the LaTeX reaches KaTeX exactly as written. This is what lets backslash-heavy expressions (matrix row breaks `\\`, spacing macros `\,` `\;` `\!`, escaped braces) and multi-line environments render correctly.
 
-When Claude Code updates, the patch is automatically re-applied and the webview is reloaded.
+It patches Claude Code's webview bundle on startup and reloads the webview so rendering takes effect immediately. When Claude Code updates, the patch is automatically re-applied. If a future Claude Code build changes its internals so the patch no longer fits, the extension leaves Claude Code untouched and notifies you to update.
 
 `extension.js` of Claude Code is **never modified**. Only the webview bundle (which runs in an isolated browser context) is patched, and originals are backed up.
 
@@ -66,8 +66,7 @@ To **re-enable**, use **Claude Code LaTeX: Enable**.
 
 ## Known Limitations
 
-- **Backslash spacing commands** (`\,` `\;` `\!`) are stripped by Claude Code's markdown parser before this extension sees them. There is no workaround at this time.
-- There may be a brief flash of raw LaTeX during streaming responses (200ms debounce).
+- Rendering covers everything KaTeX supports — essentially all standard math notation. A few full-LaTeX features outside its scope (such as TikZ diagrams) are not rendered.
 - Code blocks are never affected. `$variable` inside `` `code` `` or code fences is left alone.
 - This is a temporary workaround until [anthropics/claude-code#16446](https://github.com/anthropics/claude-code/issues/16446) is resolved. Once Claude Code ships native LaTeX support, this extension can be uninstalled.
 

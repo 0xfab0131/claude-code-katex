@@ -2,51 +2,152 @@
 
 ## Architecture
 
-This extension patches Claude Code's webview to add LaTeX rendering via KaTeX.
+This extension patches Claude Code's webview to render LaTeX math via KaTeX.
 
-(Note: display name is "Claude Code LaTeX" but the extension ID and repo name
-are still `claude-code-katex` for marketplace continuity.)
+(Display name is "Claude Code LaTeX"; the extension ID and repo name are still
+`claude-code-katex` for marketplace continuity.)
 
-**How Claude Code renders chat messages:**
-- Uses `react-markdown` (remark/micromark), NOT `marked`
-- Custom React components for: `a` (with onClick/onContextMenu handlers for file links), `pre` (wrapped with copy button), `code`, `img`
-- `<a>` tags inside `<p>` elements have React event handlers that will be destroyed if you set innerHTML
-- remark-gfm is the only plugin (autolink, footnotes, strikethrough, tables, task lists). No remark-math.
-- Underscores in LaTeX (e.g. `_{\text{travel}}`) get interpreted as emphasis by micromark, splitting `$...$` across multiple DOM nodes
-- **Backslash escaping:** micromark's `characterEscape` tokenizer strips `\` before any ASCII punctuation (`[!-/:-@[-`{-~]`). This means `\{` becomes `{`, `\}` becomes `}`, `\,` becomes `,`, etc. Non-punctuation like `\left`, `\frac`, `\sum` are NOT affected (the `\` survives).
-  - **Fixable:** `\left\{` → `\left{` and `\right\}` → `\right}` are patched back by `replaceMathRange()` because `\left{` / `\right}` are never valid KaTeX.
-  - **Not fixable:** `\,` (thin space), `\;` (medium space), `\!` (negative space), standalone `\{`/`\}` for literal braces. The backslash is gone from the DOM and the remaining character is ambiguous with legitimate punctuation/grouping. Only a pre-remark hook (e.g. `marked.use()` or remark plugin) could fix these.
+The extension injects a math pipeline into Claude Code's own react-markdown
+plugin chain, so math is tokenized *during* Markdown parsing — verbatim —
+instead of being repaired in the DOM afterward.
 
-**Key constraint:** Never set `innerHTML` on elements that may contain `<a>` tags or other React-managed interactive elements. Use DOM-range-based manipulation instead.
+- `applyPatch` (in `extension.js`) locates Claude Code's single react-markdown
+  call — `createElement(<Markdown>, {remarkPlugins:[<gfm>], components:{...}},
+  text)` — with `V2_INJECT_RE`, and rewrites it to add
+  `rehypePlugins:[rehypeKatex]` and `remarkPlugins:[gfm, remarkBracketMath,
+  remarkMath]`. The injected references are guarded on `window.__KATEX_V2_LOADED`
+  so a bundle-load failure cannot break Claude Code's Markdown.
+- It prepends `vendor/katex.min.js` + `vendor/remark-math-bundle.js` to the
+  webview bundle (Claude Code mounts its React app at the end of the bundle, so
+  the globals must be defined first).
+- If the injection point is not found — a future Claude Code reshaped its
+  bundle — `applyPatch` returns `false`, touches nothing, and the extension
+  shows an "update / report an issue" notice. There is no fallback renderer.
+
+The patch is version-stamped; an extension update restores the originals from
+`.katex-bak` and re-applies. Claude Code's `extension.js` is **never modified** —
+only the webview bundle (an isolated browser context) is patched.
+
+## The math pipeline — `v2-spike/entry.js`
+
+`remark-math` only recognizes `$...$` / `$$...$$`. `remarkBracketMath` wraps the
+Markdown parser to normalize the raw source before micromark runs:
+
+- `\[`→`$$`, `\]`→`$$`, `\(`→`$`, `\)`→`$` — each guarded with `(?<!\\)` so
+  amsmath row separators like `\\[6pt]` keep their `[` and are not corrupted.
+- currency `$`+digit → `\$` (so `$5` is not treated as math).
+- a `$$` display fence that shares its line with content (`$$\begin{aligned}` /
+  `\end{aligned}$$`) is moved onto its own line — remark-math's display-math
+  flow construct only recognizes `$$` alone on a line.
+- fenced code blocks are skipped.
+
+After editing `entry.js`, rebuild the shipped bundle:
+
+```sh
+npm run build:bundle
+```
+
+(esbuild IIFE; KaTeX is externalized to `window.katex` via
+`v2-spike/katex-global-shim.js`.)
+
+## Where Claude Code lives
+
+The extension auto-locates Claude Code via the `anthropic.claude-code` extension
+id, so normal use needs no paths. For manual inspection, the extension folder is
+under the VS Code extensions directory, which varies by setup:
+
+- `~/.vscode/extensions/` — desktop VS Code
+- `~/.vscode-server/extensions/` — Remote-SSH, WSL, Dev Containers, Codespaces
+- `~/.local/share/code-server/extensions/` — code-server / browser VS Code
+
+If more than one VS Code is in play, install into and test the instance you
+actually use: plain `code --install-extension` targets your default desktop VS
+Code; a remote or code-server instance has its own CLI.
 
 ## Before changing the webview patch
 
-Always verify assumptions against the actual compiled Claude Code webview code.
+Verify against the actual compiled Claude Code webview bundle —
+`webview/index.js` of the installed `anthropic.claude-code-*` extension. Claude
+Code updates frequently and can reshape its bundle, so confirm the injection
+point still matches before relying on it.
 
-**On Lightning studios, the path that matters is:**
-```
-~/.local/share/code-server/extensions/anthropic.claude-code-*/webview/index.js
-```
-**NOT** `~/.vscode-server/extensions/...` (that's a symlink to a separate copy code-server does not load from). Patching the wrong one is the #1 time sink.
+## Setup
 
-Claude Code updates frequently and the internal structure can change. Grep the actual bundle to confirm:
-- How markdown is rendered (which library, which plugins)
-- What custom React components exist and where interactive elements live
-- Whether elements have event handlers that would be destroyed by innerHTML replacement
-
-Do not rely on memory or assumptions about the internals. Read the code.
+`npm install` first (Node 18+) — it provides `jest`, `esbuild` (for the bundle
+build), and `playwright`.
 
 ## Testing
 
-- `node_modules/.bin/jest` runs 73 Jest unit tests (top-level `npm test` sometimes fails with path issues — call the binary directly)
-- `node_modules/.bin/playwright test test-ui/ui.spec.js --project=chromium` runs 39 UI tests against a synthetic harness
-- **Real E2E** against actual Claude Code + real streaming auth is in `test-ui/verify-fix.js` — see full playbook at `~/.claude/projects/-teamspace-studios-this-studio/memory/vscode-webview-e2e-testing.md` for the checklist of gotchas (webview caching, two extension paths, marker strings, happy-path traps). Read it before doing any hands-on debugging.
-- After packaging, install locally and test with actual LaTeX in Claude Code chat
+You verify changes yourself before committing. Run levels 1–2 for any change;
+level 3 for anything that affects rendering.
 
-## Packaging
+### Level 1 — unit tests (no browser)
 
 ```sh
-npx @vscode/vsce package --no-dependencies
-code --install-extension claude-code-katex-*.vsix --force
-# Then reload VS Code window
+node_modules/.bin/jest
 ```
+
+Covers the patch lifecycle (apply / refresh / remove) and the webview injection.
+Call the binary directly; `npm test` can hit path issues.
+
+### Level 2 — rendering harness (needs a browser)
+
+`v2-spike/test.html` renders the real shipping bundle
+(`vendor/remark-math-bundle.js`) through Claude Code's actual plugin chain
+(`react-markdown` → `remark-math` → `rehype-katex`) and records a PASS/FAIL per
+case on `window.__RESULTS` (`window.__DONE` flags completion).
+
+It is a browser page, so you drive a browser to run it: serve the repo
+(`python3 -m http.server 8080` — the harness loads `/vendor/…` by absolute path
+and pulls React from a CDN, so it needs network access), then via Playwright or
+the Playwright MCP server open `http://localhost:8080/v2-spike/test.html`, wait
+for `window.__DONE`, and read `window.__RESULTS`. Add a case to `test.html` for
+every rendering bug you fix.
+
+### Level 3 — real end-to-end (heaviest; needs a set-up environment)
+
+The truest check — the real extension patching a real Claude Code — and the
+only level with real prerequisites. You need a **browser-drivable VS Code**
+(code-server; a desktop Electron VS Code can't be driven this way) running a
+Claude Code extension that is **installed and signed in**. That is a one-time
+setup cost — treat level 3 as a pre-release / maintainer check, not something
+every change needs.
+
+Build, package, install:
+
+```sh
+npm run build:bundle                          # rebuild if entry.js changed
+npx @vscode/vsce package --no-dependencies     # -> claude-code-katex-<ver>.vsix
+code --install-extension claude-code-katex-<ver>.vsix --force
+```
+
+Then drive that code-server through Playwright / the MCP server: reload the
+window, open a Claude Code tab, find its webview iframe **by shape** (it has
+`#root` and a message input — do not match on URL), send a math prompt, and
+assert `.katex` elements render with no `.katex-error`. Exercise inline `$…$` /
+`\(…\)`, display `$$…$$` / `\[…\]`, matrices, multi-line environments, and
+confirm code blocks and currency (`$5`) stay literal.
+
+The patched `webview/index.js` carries a `katex-ext-version: <x.y.z>` stamp;
+`webview/index.js.katex-bak` is the pristine backup.
+
+### Browser automation (levels 2 and 3)
+
+You operate and observe the harness and VS Code through a real browser, not
+directly. Use either:
+
+- the `playwright` package (a devDependency) — run `npx playwright install
+  chromium` once for the browser binary, then drive it from a Node script via
+  Bash; or
+- the **Playwright MCP server**, if it is configured for your session.
+
+Level 1 needs neither.
+
+## Submitting changes
+
+- Rebuild and commit `vendor/remark-math-bundle.js` whenever you change
+  `entry.js`.
+- Run levels 1–2 before committing; run level 3 for rendering changes.
+- Add a `v2-spike/test.html` regression case for any bug you fix.
+- Keep commit messages in the existing style (`fix:`, `feat:`, `test:`,
+  `docs:`, …).
