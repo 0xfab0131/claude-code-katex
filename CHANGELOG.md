@@ -1,5 +1,22 @@
 # Changelog
 
+## [2.0.0] - 2026-05-19
+
+### Changed
+- **Rendering rewritten.** Math now renders through Claude Code's own react-markdown plugin chain — `remark-math` + `rehype-katex` injected into the markdown pipeline — instead of a DOM post-processor running after render. `remark-math` tokenizes `$...$` / `$$...$$` during markdown parsing, so the LaTeX reaches KaTeX verbatim.
+
+### Fixed
+- **Matrices and other multi-row environments now render.** `\\` row separators (in `bmatrix`, `pmatrix`, `vmatrix`, `aligned`, `cases`, `array`, …) were collapsed to a single `\` by Claude Code's markdown parser before v1 ever saw them, so every row merged into one. v2 parses the math before that collapse happens.
+- **`\[ ... \]` and `\( ... \)` delimiters now render.** Their backslashes were stripped (`\[` → `[`) before v1 could detect them. v2 normalizes these to `$$` / `$` ahead of parsing (fenced code blocks are left untouched).
+- Multi-line display math containing a line that is only `=` no longer renders as a giant heading (a CommonMark setext-heading mis-parse).
+- Backslash-escaped braces (`\{`, `\}`), thin spaces (`\,`) and similar escapes inside math now survive — v1 could not recover them.
+
+### Removed
+- The MutationObserver / debounce / streaming re-render machinery. Rendering is now part of React's render pass, so there is no flash of raw `$` during streaming and no `Ctrl+Alt+M` re-render needed.
+
+### Notes
+- If a future Claude Code build changes its bundle shape so the injection point is not found, the extension automatically falls back to the v1 DOM post-processor, so rendering keeps working.
+
 ## [1.10.1] - 2026-05-19
 
 ### Added
