@@ -10,9 +10,15 @@ Renders `$...$` (inline) and `$$...$$` (display) math expressions in Claude's ch
 
 ## Demo
 
+![Claude Code LaTeX demo — a Claude Code chat response shown as raw LaTeX, then rendered as math after the extension is installed](https://raw.githubusercontent.com/MahammadNuriyev62/claude-code-katex/main/claude-code-latex-demo.gif)
+
+*Claude Code's raw `$$...$$` → rendered math, the moment the extension is installed.*
+
+### Before / After
+
 | Before | After |
 |--------|-------|
-| <img width="505" alt="Image" src="https://github.com/user-attachments/assets/4813f18c-fcaa-419f-a636-a8c3651f8ec4" /> | <img width="503" alt="Image" src="https://github.com/user-attachments/assets/a26b6b99-9e0c-4643-8467-549134068ee4" /> |
+| <img width="505" alt="Before — raw LaTeX source in a chat response" src="https://github.com/user-attachments/assets/4813f18c-fcaa-419f-a636-a8c3651f8ec4" /> | <img width="503" alt="After — the same response with rendered math" src="https://github.com/user-attachments/assets/a26b6b99-9e0c-4643-8467-549134068ee4" /> |
 
 ## Install
 
