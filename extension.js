@@ -12,6 +12,18 @@ const EXTENSION_VERSION = require('./package.json').version;
 // Version-agnostic prefix of the stamp line: `/* katex-ext-version: X.Y.Z */`.
 // Patches from builds <= 1.9.0 have no stamp at all (getPatchedVersion -> null).
 const PATCH_VERSION_PREFIX = '/* katex-ext-version: ';
+// Stamp recording which rendering path the patch installed: `v2` (the
+// remark-math pipeline injected into react-markdown) or `v1-fallback` (the
+// DOM post-processor, used when the injection point is not found).
+const PATCH_MODE_PREFIX = '/* katex-ext-mode: ';
+
+// The react-markdown call site in Claude Code's webview bundle:
+//   createElement(<Markdown>, {remarkPlugins:[<plugins>], components:{...}}, <text>)
+// v2 injects the math plugins here. $1 = the Markdown component identifier,
+// $2 = the existing remark plugin list. Verified to match exactly once on
+// Claude Code 2.1.144; if a future build changes shape, applyPatch falls back
+// to the v1 DOM post-processor.
+const V2_INJECT_RE = /createElement\(([A-Za-z_$][\w$]*),\{remarkPlugins:\[([A-Za-z_$][\w$,]*)\]/;
 
 function findClaudeCodeExtDir() {
   const ext = vscode.extensions.getExtension('anthropic.claude-code');
@@ -47,6 +59,22 @@ function getPatchedVersion(extDir) {
   }
 }
 
+// Reads the rendering-path stamp from the patched webview. Returns 'v2',
+// 'v1-fallback', or null (unpatched, or a pre-2.0.0 patch with no mode stamp).
+function getPatchedMode(extDir) {
+  try {
+    const js = fs.readFileSync(path.join(extDir, 'webview', 'index.js'), 'utf8');
+    const start = js.indexOf(PATCH_MODE_PREFIX);
+    if (start === -1) return null;
+    const rest = js.slice(start + PATCH_MODE_PREFIX.length);
+    const end = rest.indexOf(' */');
+    if (end === -1) return null;
+    return rest.slice(0, end).trim();
+  } catch {
+    return null;
+  }
+}
+
 function applyPatch(extDir, vendorDir) {
   const webviewDir = path.join(extDir, 'webview');
   const jsPath = path.join(webviewDir, 'index.js');
@@ -59,7 +87,7 @@ function applyPatch(extDir, vendorDir) {
     }
   }
 
-  // Copy fonts
+  // Copy KaTeX fonts (both rendering paths need them)
   const fontsTarget = path.join(webviewDir, 'fonts');
   const fontsSrc = path.join(vendorDir, 'fonts');
   if (!fs.existsSync(fontsTarget)) {
@@ -69,24 +97,54 @@ function applyPatch(extDir, vendorDir) {
     fs.copyFileSync(path.join(fontsSrc, font), path.join(fontsTarget, font));
   }
 
-  // Patch index.js
+  // Patch index.js. The webview bundle always loads before this extension
+  // activates, so the patch lives on disk and a webview reload picks it up.
   const katexCore = fs.readFileSync(path.join(vendorDir, 'katex.min.js'), 'utf8');
-  const autoRender = fs.readFileSync(path.join(vendorDir, 'auto-render.min.js'), 'utf8');
-  const observerScript = getMutationObserverScript();
+  const body = fs.readFileSync(jsPath, 'utf8');
+  const stamp = `${PATCH_MARKER}\n${PATCH_VERSION_PREFIX}${EXTENSION_VERSION} */\n`;
+  let patchedJs;
+  let mode;
 
-  const jsPatch = `
-${PATCH_MARKER}
-${PATCH_VERSION_PREFIX}${EXTENSION_VERSION} */
-/* KaTeX Core - MIT License - https://katex.org */
-${katexCore}
-/* KaTeX Auto-Render Extension */
-${autoRender}
-${observerScript}
-/* === End KaTeX Patch === */`;
+  if (V2_INJECT_RE.test(body)) {
+    // v2 — inject the remark-math + rehype-katex pipeline into Claude Code's
+    // react-markdown call. remark-math tokenizes $...$ / $$...$$ during
+    // micromark tokenization, capturing the LaTeX verbatim BEFORE CommonMark's
+    // characterEscape collapses `\\` (matrix row separators) and before block
+    // parsing can mis-read a lone `=` line as a setext heading. The injected
+    // plugin references are guarded on window.__KATEX_V2_LOADED so that if the
+    // bundle ever fails to load, Claude Code's markdown still renders normally.
+    const v2Bundle = fs.readFileSync(path.join(vendorDir, 'remark-math-bundle.js'), 'utf8');
+    const injectedBody = body.replace(
+      V2_INJECT_RE,
+      'createElement($1,{rehypePlugins:window.__KATEX_V2_LOADED?[window.__rehypeKatex]:[],' +
+      'remarkPlugins:[$2].concat(window.__KATEX_V2_LOADED?[window.__remarkBracketMath,window.__remarkMath]:[])'
+    );
+    // Prepended, not appended: Claude Code mounts its React app at the end of
+    // the bundle, so window.__remarkMath etc. must be defined before that runs.
+    patchedJs =
+      `${stamp}${PATCH_MODE_PREFIX}v2 */\n` +
+      `/* KaTeX Core - MIT License - https://katex.org */\n${katexCore}\n` +
+      `/* remark-math + rehype-katex pipeline */\n${v2Bundle}\n` +
+      `/* === End KaTeX Patch — Claude Code bundle (math plugins injected) follows === */\n` +
+      injectedBody;
+    mode = 'v2';
+  } else {
+    // Fallback — the injection point was not found (Claude Code changed its
+    // bundle shape). Install v1's DOM post-processor so rendering still works.
+    const autoRender = fs.readFileSync(path.join(vendorDir, 'auto-render.min.js'), 'utf8');
+    patchedJs = body +
+      `\n${stamp}${PATCH_MODE_PREFIX}v1-fallback */\n` +
+      `/* KaTeX Core - MIT License - https://katex.org */\n${katexCore}\n` +
+      `/* KaTeX Auto-Render Extension */\n${autoRender}\n` +
+      `${getMutationObserverScript()}\n` +
+      `/* === End KaTeX Patch === */`;
+    mode = 'v1-fallback';
+  }
 
-  fs.appendFileSync(jsPath, jsPatch);
+  fs.writeFileSync(jsPath, patchedJs);
 
-  // Patch index.css
+  // Patch index.css — KaTeX styles (both rendering paths produce .katex /
+  // .katex-display elements)
   const katexCss = fs.readFileSync(path.join(vendorDir, 'katex.min.css'), 'utf8');
   const cssPatch = `
 ${PATCH_CSS_MARKER}
@@ -106,6 +164,8 @@ ${katexCss}
 /* === End KaTeX CSS Patch === */`;
 
   fs.appendFileSync(cssPath, cssPatch);
+
+  return mode;
 }
 
 function removePatch(extDir) {
@@ -625,8 +685,13 @@ function activate(context) {
         return;
       }
       const patched = isPatched(dir);
+      const mode = patched ? (getPatchedMode(dir) || 'v1-fallback') : null;
+      const modeLabel = mode === 'v2'
+        ? 'remark-math pipeline'
+        : mode === 'v1-fallback' ? 'DOM post-processor (fallback)' : '';
       vscode.window.showInformationMessage(
         'Claude Code LaTeX: ' + (patched ? 'Active' : 'Not active') +
+        (modeLabel ? ' — ' + modeLabel : '') +
         '\nExtension: ' + dir
       );
     })
@@ -715,6 +780,7 @@ module.exports._test = {
   findClaudeCodeExtDir,
   isPatched,
   getPatchedVersion,
+  getPatchedMode,
   canRestoreOriginals,
   applyPatch,
   removePatch,
@@ -725,4 +791,6 @@ module.exports._test = {
   PATCH_MARKER,
   PATCH_CSS_MARKER,
   PATCH_VERSION_PREFIX,
+  PATCH_MODE_PREFIX,
+  V2_INJECT_RE,
 };

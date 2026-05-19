@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Claude Code LaTeX v2 — bundle harness</title>
+<link rel="stylesheet" href="/vendor/katex.min.css">
+<script src="/vendor/katex.min.js"></script>
+<script src="/vendor/remark-math-bundle.js"></script>
+<style>
+  body { font-family: sans-serif; background:#1e1e2e; color:#ddd; padding:20px; }
+  .case { border:1px solid #444; margin:10px 0; padding:10px; border-radius:6px; }
+  .pass { border-color:#4caf50; } .fail { border-color:#f44336; }
+  .label { font-weight:bold; } .fail .label { color:#f44336; } .pass .label { color:#4caf50; }
+  .render { background:#11111b; padding:8px; margin-top:6px; border-radius:4px; }
+</style>
+</head>
+<body>
+<h2>v2 bundle harness</h2>
+<div id="out"></div>
+<script type="module">
+import React from 'https://esm.sh/react@18.3.1?bundle';
+import { createRoot } from 'https://esm.sh/react-dom@18.3.1/client?bundle&deps=react@18.3.1';
+import Markdown from 'https://esm.sh/react-markdown@9.0.1?bundle&deps=react@18.3.1';
+import remarkGfm from 'https://esm.sh/remark-gfm@4.0.0?bundle';
+
+const remarkPlugins  = [remarkGfm, window.__remarkBracketMath, window.__remarkMath];
+const rehypePlugins  = [window.__rehypeKatex];
+
+// name, markdown, predicate(rootEl) -> [ok, detail]
+const cases = [
+  ['$$ bmatrix 2x2', '$$\\begin{bmatrix} a & b \\\\ c & d \\end{bmatrix}$$',
+    el => [el.querySelectorAll('mtr').length === 2, el.querySelectorAll('mtr').length + ' rows']],
+  ['\\[ \\] bmatrix 2x2', '\\[ \\begin{bmatrix} a & b \\\\ c & d \\end{bmatrix} \\]',
+    el => [el.querySelectorAll('mtr').length === 2, el.querySelectorAll('mtr').length + ' rows']],
+  ['screenshot case: \\[ multiline + "=" line', `\\[
+\\begin{bmatrix} 1 & 2 \\\\ 3 & 4 \\end{bmatrix} \\begin{bmatrix} 5 & 6 \\\\ 7 & 8 \\end{bmatrix}
+=
+\\begin{bmatrix} 19 & 22 \\\\ 43 & 50 \\end{bmatrix}
+\\]`,
+    el => { const r = el.querySelectorAll('mtr').length, h = el.querySelectorAll('h1,h2').length;
+            return [r === 6 && h === 0, r + ' rows, ' + h + ' headings']; }],
+  ['$$ aligned 3 rows', '$$\\begin{aligned} a &= 1 \\\\ b &= 2 \\\\ c &= 3 \\end{aligned}$$',
+    el => [el.querySelectorAll('mtr').length === 3, el.querySelectorAll('mtr').length + ' rows']],
+  ['inline $x^2$ + \\(y_i\\)', 'Inline $x^2 + 1$ and \\(y_i\\) together.',
+    el => { const k = el.querySelectorAll('.katex').length;
+            return [k === 2 && !el.textContent.includes('$'), k + ' katex, text=' + JSON.stringify(el.textContent)]; }],
+  ['currency $100 / $200 stays text', 'it costs $100 and $200 total',
+    el => [el.querySelectorAll('.katex').length === 0 && el.textContent.includes('$100'),
+           el.querySelectorAll('.katex').length + ' katex, text=' + JSON.stringify(el.textContent)]],
+  ['escaped braces $\\{1,2\\}$', 'A set $\\{1, 2, 3\\}$ here.',
+    el => [el.querySelectorAll('.katex').length === 1 && el.querySelectorAll('.katex-error').length === 0, 'ok']],
+];
+
+const out = document.getElementById('out');
+const results = [];
+let done = 0;
+for (const [name, md, pred] of cases) {
+  const wrap = document.createElement('div');
+  wrap.className = 'case';
+  const r = document.createElement('div'); r.className = 'render';
+  wrap.innerHTML = '<div class="label">' + name + '</div>';
+  wrap.appendChild(r);
+  out.appendChild(wrap);
+  createRoot(r).render(React.createElement(Markdown, { remarkPlugins, rehypePlugins }, md));
+}
+// give React + KaTeX a tick to render, then evaluate
+setTimeout(() => {
+  const wraps = out.querySelectorAll('.case');
+  cases.forEach(([name, md, pred], i) => {
+    const wrap = wraps[i], r = wrap.querySelector('.render');
+    let ok = false, detail = '';
+    try { [ok, detail] = pred(r); } catch (e) { detail = 'threw: ' + e.message; }
+    wrap.classList.add(ok ? 'pass' : 'fail');
+    wrap.querySelector('.label').textContent = (ok ? 'PASS  ' : 'FAIL  ') + name + '  —  ' + detail;
+    results.push({ name, ok, detail });
+  });
+  window.__RESULTS = results;
+  window.__DONE = true;
+}, 600);
+</script>
+</body>
+</html>

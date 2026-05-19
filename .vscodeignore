@@ -16,3 +16,5 @@ vendor-v2/**
 CLAUDE.md
 claude-code-latex-demo.gif
 claude-code-latex-demo.mp4
+_*.js
+_*.mjs
