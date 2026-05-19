@@ -1,6 +1,6 @@
-// Tests for the v2 patch path: injecting the remark-math pipeline into
-// Claude Code's react-markdown call, and falling back to the v1 DOM
-// post-processor when the injection point is absent.
+// Tests for the v2 patch: injecting the remark-math pipeline into Claude
+// Code's react-markdown call, and reporting "unsupported" (patching nothing)
+// when the injection point is absent.
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
@@ -10,18 +10,21 @@ jest.mock('vscode', () => ({
   window: {},
   commands: { registerCommand: jest.fn(), executeCommand: jest.fn() },
   extensions: { getExtension: jest.fn(), onDidChange: jest.fn() },
+  env: { openExternal: jest.fn() },
+  Uri: { parse: (s) => s },
   StatusBarAlignment: { Left: 1, Right: 2 },
 }), { virtual: true });
 
 const { _test } = require('./extension');
 const VENDOR = path.join(__dirname, 'vendor');
 
-// A minimal stand-in for Claude Code's webview bundle that carries the real
-// react-markdown call shape: createElement(<Markdown>,{remarkPlugins:[<gfm>],
+// A minimal stand-in for Claude Code's webview bundle carrying the real
+// react-markdown call: createElement(<Markdown>,{remarkPlugins:[<gfm>],
 // components:{...}},<text>).
 const FIXTURE_WITH = 'var a=1;' +
   'var el=B8.default.createElement(Co,{remarkPlugins:[yf],components:{a:1,pre:2}},Y);' +
   'console.log(el);';
+// A bundle whose react-markdown call shape the patch cannot find.
 const FIXTURE_WITHOUT = 'var a=1;var el=B8.default.createElement(Co,{components:{a:1}},Y);';
 
 function makeExtDir(jsBody) {
@@ -46,19 +49,22 @@ describe('v2 injection regex', () => {
   });
 });
 
-describe('applyPatch — v2 path', () => {
+describe('applyPatch — injection point present', () => {
   let dir, pristineJs, pristineCss;
-  beforeEach(() => { dir = makeExtDir(FIXTURE_WITH); pristineJs = readJs(dir); pristineCss = fs.readFileSync(path.join(dir,'webview','index.css'),'utf8'); });
+  beforeEach(() => {
+    dir = makeExtDir(FIXTURE_WITH);
+    pristineJs = readJs(dir);
+    pristineCss = fs.readFileSync(path.join(dir, 'webview', 'index.css'), 'utf8');
+  });
   afterEach(() => fs.rmSync(dir, { recursive: true, force: true }));
 
-  test('returns "v2" when the injection point is present', () => {
-    expect(_test.applyPatch(dir, VENDOR)).toBe('v2');
+  test('returns true', () => {
+    expect(_test.applyPatch(dir, VENDOR)).toBe(true);
   });
-  test('stamps version and mode', () => {
+  test('stamps the patch marker and this version', () => {
     _test.applyPatch(dir, VENDOR);
     expect(_test.isPatched(dir)).toBe(true);
     expect(_test.getPatchedVersion(dir)).toBe(_test.EXTENSION_VERSION);
-    expect(_test.getPatchedMode(dir)).toBe('v2');
   });
   test('injects guarded plugin references into the call', () => {
     _test.applyPatch(dir, VENDOR);
@@ -89,43 +95,55 @@ describe('applyPatch — v2 path', () => {
   });
 });
 
-describe('applyPatch — v1 fallback path', () => {
+describe('applyPatch — injection point absent (unsupported)', () => {
   let dir;
   beforeEach(() => { dir = makeExtDir(FIXTURE_WITHOUT); });
   afterEach(() => fs.rmSync(dir, { recursive: true, force: true }));
 
-  test('returns "v1-fallback" when the injection point is absent', () => {
-    expect(_test.applyPatch(dir, VENDOR)).toBe('v1-fallback');
+  test('returns false', () => {
+    expect(_test.applyPatch(dir, VENDOR)).toBe(false);
   });
-  test('stamps mode v1-fallback and installs the DOM observer', () => {
+  test('touches nothing — no patch, no backup, no fonts', () => {
     _test.applyPatch(dir, VENDOR);
-    expect(_test.getPatchedMode(dir)).toBe('v1-fallback');
-    expect(readJs(dir)).toContain('renderMathInElement');
+    expect(readJs(dir)).toBe(FIXTURE_WITHOUT);
+    expect(_test.isPatched(dir)).toBe(false);
+    expect(fs.existsSync(path.join(dir, 'webview', 'index.js.katex-bak'))).toBe(false);
+    expect(fs.existsSync(path.join(dir, 'webview', 'fonts'))).toBe(false);
   });
-  test('the fallback-patched bundle is still valid JavaScript', () => {
-    _test.applyPatch(dir, VENDOR);
-    expect(isValidJs(readJs(dir))).toBe(true);
+  test('ensurePatched reports "unsupported"', () => {
+    expect(_test.ensurePatched(dir, VENDOR)).toBe('unsupported');
   });
 });
 
-// Opportunistic: if a real Claude Code bundle is on disk, patch a copy of it
-// and confirm the injection still produces valid JS against the real shape.
+// Opportunistic: if a *pristine* real Claude Code bundle is on disk, patch a
+// copy of it and confirm the injection still produces valid JS against the
+// real shape. A bundle the extension already patched is skipped (its injection
+// point is consumed) — its .katex-bak holds the pristine original, so prefer
+// that.
 describe('applyPatch — against the real Claude Code bundle (if present)', () => {
   const candidates = (() => {
     const base = path.join(os.homedir(), '.vscode-server', 'extensions');
+    const out = [];
     try {
-      return fs.readdirSync(base)
-        .filter((d) => d.startsWith('anthropic.claude-code-'))
-        .map((d) => path.join(base, d, 'webview', 'index.js'))
-        .filter((p) => fs.existsSync(p));
-    } catch { return []; }
+      for (const d of fs.readdirSync(base)) {
+        if (!d.startsWith('anthropic.claude-code-')) continue;
+        for (const f of ['webview/index.js.katex-bak', 'webview/index.js']) {
+          const p = path.join(base, d, f);
+          if (fs.existsSync(p) && !fs.readFileSync(p, 'utf8').includes(_test.PATCH_MARKER)) {
+            out.push(p); // a confirmed-pristine source
+            break;
+          }
+        }
+      }
+    } catch { /* no extensions dir — skip */ }
+    return out;
   })();
 
-  (candidates.length ? test : test.skip)('patches a real bundle copy to valid v2 JS', () => {
+  (candidates.length ? test : test.skip)('patches a real bundle copy to valid JS', () => {
     const real = fs.readFileSync(candidates[candidates.length - 1], 'utf8');
     const dir = makeExtDir(real);
     try {
-      expect(_test.applyPatch(dir, VENDOR)).toBe('v2');
+      expect(_test.applyPatch(dir, VENDOR)).toBe(true);
       expect(isValidJs(readJs(dir))).toBe(true);
       _test.removePatch(dir);
       expect(readJs(dir)).toBe(real);

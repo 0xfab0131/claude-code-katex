@@ -13,10 +13,10 @@
 - Underscore subscripts that CommonMark parsed as emphasis (`_..._` → `<em>`, dropping the `_`) are preserved — v2 parses the math before emphasis parsing runs. ([#7](https://github.com/MahammadNuriyev62/claude-code-katex/issues/7))
 
 ### Removed
-- The MutationObserver / debounce / streaming re-render machinery. Rendering is now part of React's render pass, so there is no flash of raw `$` during streaming and no `Ctrl+Alt+M` re-render needed.
+- The entire v1 DOM post-processor — MutationObserver, debounce, the `$`/currency disambiguation pass, and the `Claude Code LaTeX: Re-render Math` command / `Ctrl+Alt+M` shortcut. Rendering is now part of React's render pass, so there is no flash of raw `$` during streaming and nothing to re-render manually.
 
 ### Notes
-- If a future Claude Code build changes its bundle shape so the injection point is not found, the extension automatically falls back to the v1 DOM post-processor, so rendering keeps working.
+- If a future Claude Code build changes its bundle so the injection point can't be found, the extension leaves Claude Code untouched and shows a notice to update the extension (or report it) — rather than risk a broken patch.
 
 ## [1.10.1] - 2026-05-19
 
