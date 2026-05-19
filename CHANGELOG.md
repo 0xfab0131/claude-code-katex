@@ -1,5 +1,10 @@
 # Changelog
 
+## [1.10.1] - 2026-05-19
+
+### Added
+- Animated demo GIF in the README and Marketplace listing. It walks through raw `$$...$$` in a Claude Code response, installing the extension, and the same math rendering live.
+
 ## [1.10.0] - 2026-05-15
 
 ### Fixed
