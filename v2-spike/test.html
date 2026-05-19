@@ -49,6 +49,12 @@ const cases = [
            el.querySelectorAll('.katex').length + ' katex, text=' + JSON.stringify(el.textContent)]],
   ['escaped braces $\\{1,2\\}$', 'A set $\\{1, 2, 3\\}$ here.',
     el => [el.querySelectorAll('.katex').length === 1 && el.querySelectorAll('.katex-error').length === 0, 'ok']],
+  ['issue #7 — _ subscript + \\; thin space', String.raw`$$\mathcal{M}_{\alpha,\beta}(a,b) \;=\; \tfrac{1}{2}\Bigl(a + b + \bigl((a-b)^{2\beta} + \alpha^{2\beta}\bigr)^{1/(2\beta)}\Bigr)$$`,
+    el => { const e = el.querySelectorAll('.katex-error').length, s = el.querySelectorAll('msub').length;
+            return [e === 0 && s >= 1 && el.querySelectorAll('.katex').length >= 1, e + ' err, ' + s + ' msub']; }],
+  ['issue #7 — \\! negative space + _ subscript', String.raw`Inline: $\partial_{xx} M(\Phi, V_+) = (\nabla^2 M)\![(\Phi', V_+'), (\Phi', V_+')] + (\nabla M)\cdot(\Phi'', V_+'')$`,
+    el => { const e = el.querySelectorAll('.katex-error').length, s = el.querySelectorAll('msub').length;
+            return [e === 0 && s >= 1 && el.querySelectorAll('.katex').length >= 1, e + ' err, ' + s + ' msub']; }],
 ];
 
 const out = document.getElementById('out');

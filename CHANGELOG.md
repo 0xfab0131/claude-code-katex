@@ -9,7 +9,8 @@
 - **Matrices and other multi-row environments now render.** `\\` row separators (in `bmatrix`, `pmatrix`, `vmatrix`, `aligned`, `cases`, `array`, …) were collapsed to a single `\` by Claude Code's markdown parser before v1 ever saw them, so every row merged into one. v2 parses the math before that collapse happens.
 - **`\[ ... \]` and `\( ... \)` delimiters now render.** Their backslashes were stripped (`\[` → `[`) before v1 could detect them. v2 normalizes these to `$$` / `$` ahead of parsing (fenced code blocks are left untouched).
 - Multi-line display math containing a line that is only `=` no longer renders as a giant heading (a CommonMark setext-heading mis-parse).
-- Backslash-escaped braces (`\{`, `\}`), thin spaces (`\,`) and similar escapes inside math now survive — v1 could not recover them.
+- Backslash-escaped braces (`\{`, `\}`) and spacing macros (`\,`, `\;`, `\!`, `\:`) inside math now survive. v1's CommonMark layer stripped the backslash (`\;` → `;`, `\!` → `!`) before KaTeX saw it. ([#7](https://github.com/MahammadNuriyev62/claude-code-katex/issues/7))
+- Underscore subscripts that CommonMark parsed as emphasis (`_..._` → `<em>`, dropping the `_`) are preserved — v2 parses the math before emphasis parsing runs. ([#7](https://github.com/MahammadNuriyev62/claude-code-katex/issues/7))
 
 ### Removed
 - The MutationObserver / debounce / streaming re-render machinery. Rendering is now part of React's render pass, so there is no flash of raw `$` during streaming and no `Ctrl+Alt+M` re-render needed.
