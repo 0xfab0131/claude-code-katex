@@ -679,23 +679,59 @@ describe('Status command', () => {
 
   const getHandler = (name) => mockRegisterCommand.mock.calls.find((c) => c[0] === name)[1];
 
-  test('reports Active when patched', () => {
+  test('reports Active with reload/disable actions when patched', () => {
     mockGetExtension.mockReturnValue({ extensionPath: extDir });
     applyPatch(extDir, vendorDir);
     activate(context);
     mockShowInformationMessage.mockClear();
     getHandler('claude-code-katex.status')();
-    expect(mockShowInformationMessage).toHaveBeenCalledWith(expect.stringContaining('Active'));
+    expect(mockShowInformationMessage).toHaveBeenCalledWith(
+      expect.stringContaining('Active'), 'Reload Webview', 'Reload Window', 'Disable');
   });
 
-  test('reports Not active when not patched', () => {
+  test('reports Not active with enable/reload actions when not patched', () => {
     mockGetExtension.mockReturnValue({ extensionPath: extDir });
     applyPatch(extDir, vendorDir);
     activate(context);
     removePatch(extDir);
     mockShowInformationMessage.mockClear();
     getHandler('claude-code-katex.status')();
-    expect(mockShowInformationMessage).toHaveBeenCalledWith(expect.stringContaining('Not active'));
+    expect(mockShowInformationMessage).toHaveBeenCalledWith(
+      expect.stringContaining('Not active'), 'Enable', 'Reload Window');
+  });
+
+  test('"Reload Webview" action reloads the webview', async () => {
+    mockGetExtension.mockReturnValue({ extensionPath: extDir });
+    applyPatch(extDir, vendorDir);
+    activate(context);
+    mockExecuteCommand.mockClear();
+    mockShowInformationMessage.mockResolvedValueOnce('Reload Webview');
+    getHandler('claude-code-katex.status')();
+    await Promise.resolve(); await Promise.resolve();
+    expect(mockExecuteCommand).toHaveBeenCalledWith('workbench.action.webview.reloadWebviewAction');
+  });
+
+  test('"Disable" action delegates to the disable command', async () => {
+    mockGetExtension.mockReturnValue({ extensionPath: extDir });
+    applyPatch(extDir, vendorDir);
+    activate(context);
+    mockExecuteCommand.mockClear();
+    mockShowInformationMessage.mockResolvedValueOnce('Disable');
+    getHandler('claude-code-katex.status')();
+    await Promise.resolve(); await Promise.resolve();
+    expect(mockExecuteCommand).toHaveBeenCalledWith('claude-code-katex.disable');
+  });
+
+  test('"Enable" action delegates to the enable command when not patched', async () => {
+    mockGetExtension.mockReturnValue({ extensionPath: extDir });
+    applyPatch(extDir, vendorDir);
+    activate(context);
+    removePatch(extDir);
+    mockExecuteCommand.mockClear();
+    mockShowInformationMessage.mockResolvedValueOnce('Enable');
+    getHandler('claude-code-katex.status')();
+    await Promise.resolve(); await Promise.resolve();
+    expect(mockExecuteCommand).toHaveBeenCalledWith('claude-code-katex.enable');
   });
 
   test('shows message when Claude Code not found', () => {

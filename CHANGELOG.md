@@ -1,5 +1,13 @@
 # Changelog
 
+## [2.0.6] - 2026-06-04
+
+### Added
+- **The status-bar item is now actionable.** Clicking the `∑ LaTeX` status item
+  opens a popup with **Reload Webview** / **Reload Window** (and **Enable** /
+  **Disable**) actions, instead of a read-only info message — so the reload
+  controls are right where you'd reach for them.
+
 ## [2.0.5] - 2026-06-01
 
 ### Fixed

@@ -323,8 +323,9 @@ function activate(context) {
       }
       // Show the extension version AND the version stamped into the applied
       // patch, so it is clear whether the running webview carries this build.
+      const active = isPatched(dir);
       let status;
-      if (!isPatched(dir)) {
+      if (!active) {
         status = 'Not active — reload the window to apply';
       } else {
         const patchVer = getPatchedVersion(dir);
@@ -332,9 +333,28 @@ function activate(context) {
         else if (patchVer) status = 'Active — applied patch is v' + patchVer + ' (older than the extension); reload to refresh';
         else status = 'Active — applied patch predates version stamping; reload to refresh';
       }
-      vscode.window.showInformationMessage(
-        'Claude Code LaTeX v' + EXTENSION_VERSION + '\n' + status + '\nClaude Code: ' + dir
-      );
+      // Offer the relevant actions inline so the status-bar click is not a dead
+      // end: the reload controls users look for here, plus a quick enable/disable.
+      // Each button delegates to the existing command / built-in action.
+      const actions = active
+        ? ['Reload Webview', 'Reload Window', 'Disable']
+        : ['Enable', 'Reload Window'];
+      vscode.window
+        .showInformationMessage(
+          'Claude Code LaTeX v' + EXTENSION_VERSION + '\n' + status + '\nClaude Code: ' + dir,
+          ...actions
+        )
+        .then(function(choice) {
+          if (choice === 'Reload Webview') {
+            vscode.commands.executeCommand('workbench.action.webview.reloadWebviewAction');
+          } else if (choice === 'Reload Window') {
+            vscode.commands.executeCommand('workbench.action.reloadWindow');
+          } else if (choice === 'Enable') {
+            vscode.commands.executeCommand('claude-code-katex.enable');
+          } else if (choice === 'Disable') {
+            vscode.commands.executeCommand('claude-code-katex.disable');
+          }
+        });
     })
   );
 
@@ -354,7 +374,7 @@ function activate(context) {
       statusBarItem.tooltip = 'Claude Code LaTeX v' + EXTENSION_VERSION +
         (fresh ? ' — active (up to date)'
                : ' — active (patch ' + (patchVer ? 'v' + patchVer : 'unversioned') + '; reload to refresh)') +
-        '. Click for status.';
+        '. Click for status & reload options.';
     } else if (dir) {
       statusBarItem.text = '$(symbol-operator) LaTeX (off)';
       statusBarItem.tooltip = 'Claude Code LaTeX is not patched. Run "Claude Code LaTeX: Enable" or reload after install.';
