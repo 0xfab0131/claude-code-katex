@@ -8,7 +8,7 @@ Temporary workaround for [anthropics/claude-code#16446](https://github.com/anthr
 
 Renders inline math (`$...$`, `\(...\)`) and display math (`$$...$$`, `\[...\]`) in Claude's chat responses — including matrices and multi-line environments like `aligned`, `cases`, and `bmatrix`.
 
-## Demo
+## Old Demo
 
 ![Claude Code LaTeX demo — a Claude Code chat response shown as raw LaTeX, then rendered as math after the extension is installed](https://raw.githubusercontent.com/MahammadNuriyev62/claude-code-katex/main/claude-code-latex-demo.gif)
 
