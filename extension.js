@@ -17,13 +17,23 @@ const PATCH_VERSION_PREFIX = '/* katex-ext-version: ';
 const ISSUES_URL = 'https://github.com/MahammadNuriyev62/claude-code-katex/issues';
 
 // The react-markdown call site in Claude Code's webview bundle:
-//   createElement(<Markdown>, {remarkPlugins:[<plugins>], components:{...}}, <text>)
-// The patch injects the math plugins here. $1 = the Markdown component
-// identifier, $2 = the existing remark plugin list. `remarkPlugins` is
-// react-markdown's stable public prop name, so this survives minification-hash
-// churn; if a future Claude Code reshapes the call entirely, applyPatch reports
-// it as unsupported rather than patching blind.
-const V2_INJECT_RE = /createElement\(([A-Za-z_$][\w$]*),\{remarkPlugins:\[([A-Za-z_$][\w$,]*)\]/;
+//   <factory>(<Markdown>, {remarkPlugins:[<plugins>], components:{...}}, <text>)
+// The patch injects the math plugins here. $1 = the JSX factory (React's
+// `createElement`, or a minified alias like `b` — Claude Code 2.1.186 switched
+// to the short-alias form), $2 = the Markdown component identifier, $3 = the
+// existing remark plugin list. `remarkPlugins` is react-markdown's stable
+// public prop name, and `<ident>(<ident>,{remarkPlugins:[` is specific enough
+// to pin the one call site, so this survives minification-hash churn; if a
+// future Claude Code reshapes the call entirely, applyPatch reports it as
+// unsupported rather than patching blind.
+//
+// The identifier runs are length-bounded ({0,N}) rather than open-ended (*).
+// This regex is matched against the multi-MB minified webview bundle; an
+// open-ended `[\w$]*\(` backtracks O(n^2) across a long word-run that isn't
+// followed by `(`, which on a megabyte-scale bundle hangs the patch. Real JSX
+// factory / component / plugin identifiers are short, so the bounds never
+// exclude a genuine match while keeping the scan linear.
+const V2_INJECT_RE = /([A-Za-z_$][\w$]{0,40})\(([A-Za-z_$][\w$]{0,40}),\{remarkPlugins:\[([A-Za-z_$][\w$,]{0,200})\]/;
 
 function findClaudeCodeExtDir() {
   const ext = vscode.extensions.getExtension('anthropic.claude-code');
@@ -103,8 +113,8 @@ function applyPatch(extDir, vendorDir) {
   const v2Bundle = fs.readFileSync(path.join(vendorDir, 'remark-math-bundle.js'), 'utf8');
   const injectedBody = body.replace(
     V2_INJECT_RE,
-    'createElement($1,{rehypePlugins:window.__KATEX_V2_LOADED?[window.__rehypeKatex]:[],' +
-    'remarkPlugins:[$2].concat(window.__KATEX_V2_LOADED?[window.__remarkBracketMath,window.__remarkMath]:[])'
+    '$1($2,{rehypePlugins:window.__KATEX_V2_LOADED?[window.__rehypeKatex]:[],' +
+    'remarkPlugins:[$3].concat(window.__KATEX_V2_LOADED?[window.__remarkBracketMath,window.__remarkMath]:[])'
   );
   fs.writeFileSync(jsPath,
     `${PATCH_MARKER}\n${PATCH_VERSION_PREFIX}${EXTENSION_VERSION} */\n` +

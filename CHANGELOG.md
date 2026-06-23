@@ -1,5 +1,20 @@
 # Changelog
 
+## [2.0.7] - 2026-06-23
+
+### Fixed
+- **Renders again on Claude Code 2.1.186+.** Claude Code minified its
+  react-markdown call's JSX factory from `createElement(` to a short alias
+  (`b(`), so the patch's injection matcher no longer recognized the call site
+  and the extension reported "could not apply its patch" with no math rendering
+  ([#11](https://github.com/MahammadNuriyev62/claude-code-katex/issues/11)). The
+  matcher now captures the factory identifier instead of hard-coding
+  `createElement`, so both the old longhand and the new alias forms are patched.
+  Verified against every installed Claude Code build from 2.1.154 to 2.1.186.
+- **Hardened the matcher against catastrophic backtracking.** Its identifier
+  runs are now length-bounded, so scanning the multi-MB minified webview bundle
+  stays linear instead of degrading to O(n²) on a long unbroken token run.
+
 ## [2.0.6] - 2026-06-04
 
 ### Added

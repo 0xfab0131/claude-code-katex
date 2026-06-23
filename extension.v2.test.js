@@ -24,6 +24,11 @@ const VENDOR = path.join(__dirname, 'vendor');
 const FIXTURE_WITH = 'var a=1;' +
   'var el=B8.default.createElement(Co,{remarkPlugins:[yf],components:{a:1,pre:2}},Y);' +
   'console.log(el);';
+// The same call as Claude Code 2.1.186+ ships it: the JSX factory minified to
+// a short alias (`b(...)`) rather than longhand `createElement(...)`.
+const FIXTURE_WITH_ALIAS = 'var a=1;' +
+  'var el=b(QZ,{remarkPlugins:[GR],components:{a:1,pre:2}},Y);' +
+  'console.log(el);';
 // A bundle whose react-markdown call shape the patch cannot find.
 const FIXTURE_WITHOUT = 'var a=1;var el=B8.default.createElement(Co,{components:{a:1}},Y);';
 
@@ -43,6 +48,16 @@ describe('v2 injection regex', () => {
   });
   test('matches a multi-plugin list', () => {
     expect(_test.V2_INJECT_RE.test('createElement(M,{remarkPlugins:[gfm,foo]}')).toBe(true);
+  });
+  test('matches a minified JSX factory alias (Claude Code 2.1.186+)', () => {
+    // 2.1.186 shipped the call as `b(QZ,{remarkPlugins:[GR],...})` instead of
+    // the longhand `createElement(...)`. The factory name is captured, not
+    // hard-coded, so the short-alias form still matches.
+    const m = 'var el=b(QZ,{remarkPlugins:[GR],components:{a:1}})'.match(_test.V2_INJECT_RE);
+    expect(m).not.toBeNull();
+    expect(m[1]).toBe('b');   // factory
+    expect(m[2]).toBe('QZ');  // Markdown component
+    expect(m[3]).toBe('GR');  // existing plugin list
   });
   test('does not match an unrelated createElement call', () => {
     expect(_test.V2_INJECT_RE.test('createElement("div",{className:"x"})')).toBe(false);
@@ -92,6 +107,30 @@ describe('applyPatch — injection point present', () => {
     expect(readJs(dir)).toBe(pristineJs);
     expect(fs.readFileSync(path.join(dir, 'webview', 'index.css'), 'utf8')).toBe(pristineCss);
     expect(fs.existsSync(path.join(dir, 'webview', 'fonts'))).toBe(false);
+  });
+});
+
+describe('applyPatch — minified JSX factory alias (Claude Code 2.1.186+)', () => {
+  let dir, pristineJs;
+  beforeEach(() => {
+    dir = makeExtDir(FIXTURE_WITH_ALIAS);
+    pristineJs = readJs(dir);
+  });
+  afterEach(() => fs.rmSync(dir, { recursive: true, force: true }));
+
+  test('patches the short-alias call, preserving the factory and component', () => {
+    expect(_test.applyPatch(dir, VENDOR)).toBe(true);
+    const js = readJs(dir);
+    // The original factory (`b`) and component (`QZ`) are kept verbatim.
+    expect(js).toContain('b(QZ,{rehypePlugins:window.__KATEX_V2_LOADED?[window.__rehypeKatex]:[]');
+    expect(js).toContain('[GR].concat(window.__KATEX_V2_LOADED?[window.__remarkBracketMath,window.__remarkMath]:[])');
+    expect(js).not.toContain('{remarkPlugins:[GR],components:'); // original consumed
+    expect(isValidJs(js)).toBe(true);
+  });
+  test('removePatch restores the alias bundle byte-identically', () => {
+    _test.applyPatch(dir, VENDOR);
+    _test.removePatch(dir);
+    expect(readJs(dir)).toBe(pristineJs);
   });
 });
 
